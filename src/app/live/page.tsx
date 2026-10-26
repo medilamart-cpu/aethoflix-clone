@@ -46,30 +46,20 @@ export default async function LivePage() {
   );
 }
 
-async function LiveChannelCard({ channel }: { channel: LiveChannel }) {
-  // Each channel has multiple HLS servers — fetch the first server URL.
-  // In production you'd want to do this client-side so the page renders fast.
-  let firstStreamUrl: string | null = null;
-  let serverCount = 0;
-  try {
-    const detail = await liveChannelDetail(channel.id);
-    serverCount = detail.servers.length;
-    firstStreamUrl = detail.servers[0]?.playable ?? null;
-  } catch {
-    // ignore
-  }
-
+function LiveChannelCard({ channel }: { channel: LiveChannel }) {
   return (
     <a
-      href={firstStreamUrl ?? channel.embed}
+      href={channel.embed}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block rounded-xl border border-white/10 bg-white/5 p-3 transition-colors hover:bg-white/10"
+      className="group block rounded-xl border border-white/10 bg-white/5 p-3.5 transition-all hover:border-indigo-500/50 hover:bg-white/10"
     >
-      <p className="truncate text-sm font-medium">{channel.name}</p>
-      <p className="mt-1 text-[11px] text-neutral-500">
-        {serverCount > 0 ? `${serverCount} HLS servers` : "Tap to open"}
-      </p>
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Live</span>
+      </div>
+      <p className="mt-2 truncate text-sm font-semibold text-white group-hover:text-indigo-300 transition-colors">{channel.name}</p>
+      <p className="mt-1 text-[11px] text-neutral-400">Watch Channel ↗</p>
     </a>
   );
 }

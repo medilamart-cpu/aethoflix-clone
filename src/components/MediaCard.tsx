@@ -14,12 +14,13 @@ interface MovieCardProps {
 
 export function MediaCard({ item, href, title }: MovieCardProps) {
   const vote = "vote_average" in item ? item.vote_average : 0;
+  const safeTitle = title || ("title" in item && item.title) || ("name" in item && (item as { name?: string }).name) || "Media Title";
   return (
     <Link href={href} className="group block flex-shrink-0">
       <div className="relative aspect-[2/3] w-32 overflow-hidden rounded-lg border border-white/5 bg-white/5 sm:w-36 md:w-40">
         <Image
           src={posterUrl(item.poster_path, "w500")}
-          alt={title}
+          alt={safeTitle}
           fill
           sizes="(max-width: 768px) 128px, (max-width: 1024px) 144px, 160px"
           className="object-cover transition-transform duration-300 group-hover:scale-105"

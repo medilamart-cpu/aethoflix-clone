@@ -11,12 +11,13 @@ interface HeroProps {
 }
 
 export function Hero({ item }: HeroProps) {
+  const title = item.title || (item as unknown as { name?: string }).name || "Featured Title";
   const href = item.media_type === "movie" ? `/watch/movie/${item.id}` : `/watch/tv/${item.id}`;
   return (
     <section className="relative h-[60vh] min-h-[400px] w-full overflow-hidden md:h-[70vh]">
       <Image
         src={backdropUrl(item.backdrop_path, "original")}
-        alt={item.title}
+        alt={title}
         fill
         priority
         sizes="100vw"
@@ -26,7 +27,7 @@ export function Hero({ item }: HeroProps) {
       <div className="absolute inset-0 flex items-end">
         <div className="mx-auto w-full max-w-7xl px-4 pb-12 sm:px-6 md:pb-20">
           <h1 className="max-w-3xl text-3xl font-extrabold leading-tight tracking-tight md:text-5xl md:leading-[1.1]">
-            {item.title}
+            {title}
           </h1>
           <div className="mt-3 flex items-center gap-3 text-sm text-neutral-300">
             {item.vote_average > 0 && (
