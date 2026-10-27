@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@types/video.js": "^7.3.58",
+    "@videojs/hlsjs-video": "^10.2.0",
+    "@videojs/react": "^10.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.460.0",
@@ -19,7 +21,7 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "tailwind-merge": "^2.5.4",
-    "video.js": "^10.2.0"
+    "video.js": "^8.24.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
