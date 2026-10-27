@@ -85,12 +85,8 @@ export function VideoPlayer({
       window.open = stealthOpen as unknown as typeof window.open;
     }
 
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
     return () => {
       window.open = originalOpen;
-      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [adShieldActive]);
 
