@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Play, RefreshCw, Loader2, ShieldCheck, ShieldAlert, Zap } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Play, RefreshCw, Loader2, ShieldCheck, ShieldAlert, Zap, Maximize, Minimize, X } from "lucide-react";
 import { MirrorPicker } from "./MirrorPicker";
 import { WatchGate } from "./WatchGate";
 import { isWatchGateEnabled } from "@/lib/watchgate";
@@ -90,6 +90,80 @@ export function VideoPlayer({
     };
   }, [adShieldActive]);
 
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Cross-platform fullscreen toggle
+  // Mobile browsers (especially iOS Safari) block requestFullscreen() on cross-origin iframes.
+  // We seamlessly support both standard HTML5 Fullscreen API and CSS Pseudo-Fullscreen for mobile.
+  const toggleFullscreen = useCallback(async () => {
+    const container = viewportRef.current;
+    if (!container) return;
+
+    // 1. If currently in fullscreen mode, exit it
+    if (isFullscreen || document.fullscreenElement || (document as any).webkitFullscreenElement) {
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+        try {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if ((document as any).webkitExitFullscreen) (document as any).webkitExitFullscreen();
+        } catch {}
+      }
+      setIsFullscreen(false);
+      document.body.style.overflow = "";
+      try {
+        (screen.orientation as any)?.unlock?.();
+      } catch {}
+      return;
+    }
+
+    // 2. Try native Fullscreen API first (Windows, Mac, Android Chrome)
+    const canNativeFs =
+      document.fullscreenEnabled ||
+      (document as any).webkitFullscreenEnabled ||
+      !!(container.requestFullscreen || (container as any).webkitRequestFullscreen);
+
+    if (canNativeFs) {
+      try {
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+          setIsFullscreen(true);
+          return;
+        } else if ((container as any).webkitRequestFullscreen) {
+          (container as any).webkitRequestFullscreen();
+          setIsFullscreen(true);
+          return;
+        }
+      } catch (err) {
+        console.warn("[Fullscreen] Native requestFullscreen blocked or unsupported, using viewport fallback:", err);
+      }
+    }
+
+    // 3. Viewport fallback (iOS Safari / mobile WebKit)
+    setIsFullscreen(true);
+    document.body.style.overflow = "hidden";
+    try {
+      (screen.orientation as any)?.lock?.("landscape").catch(() => {});
+    } catch {}
+  }, [isFullscreen]);
+
+  // Sync state when exiting fullscreen via Escape key or mobile gestures
+  useEffect(() => {
+    const handleFsChange = () => {
+      const isNativeFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      if (!isNativeFs && isFullscreen) {
+        setIsFullscreen(false);
+        document.body.style.overflow = "";
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+      document.body.style.overflow = "";
+    };
+  }, [isFullscreen]);
+
   const handleReload = useCallback(() => {
     setIframeError(false);
     setReloadKey((k) => k + 1);
@@ -126,8 +200,27 @@ export function VideoPlayer({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Video Viewport */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl">
+      {/* Video Viewport (Supports Native & Mobile Viewport Fullscreen) */}
+      <div
+        ref={viewportRef}
+        className={`relative w-full bg-black transition-all ${
+          isFullscreen
+            ? "fixed inset-0 z-[999999] h-screen w-screen rounded-none flex items-center justify-center p-0 m-0"
+            : "aspect-video overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+        }`}
+      >
+        {/* Floating Close Button for Mobile Pseudo-Fullscreen */}
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label="Exit Fullscreen"
+            className="absolute top-4 right-4 z-50 rounded-full bg-black/80 p-2.5 text-white backdrop-blur-md hover:bg-black transition-all border border-white/20 shadow-xl cursor-pointer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
+
         {!url && (
           <div className="flex h-full w-full items-center justify-center text-center">
             <div>
@@ -176,15 +269,21 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 3. Unsandboxed Anti-Ad Embed Player */}
+        {/* 3. Unsandboxed Anti-Ad Embed Player (Mobile Fullscreen Enabled) */}
         {url && !isDirectStream && !iframeError && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}
             title={`${routingTitle} — ${selectedMirror}`}
             className="h-full w-full border-0 bg-black"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-            allowFullScreen
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
+            allowFullScreen={true}
+            {...({
+              webkitallowfullscreen: "true",
+              mozallowfullscreen: "true",
+              playsInline: true,
+              "webkit-playsinline": "true",
+            } as any)}
             referrerPolicy="origin"
             onError={() => setIframeError(true)}
           />
@@ -203,7 +302,7 @@ export function VideoPlayer({
             }}
           />
 
-          {/* Ad-Shield & Reload Actions */}
+          {/* Ad-Shield, Reload & Fullscreen Actions */}
           <div className="flex items-center gap-2">
             {isDirectStream ? (
               <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
@@ -242,6 +341,26 @@ export function VideoPlayer({
               className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-neutral-400 hover:border-white/20 hover:text-white transition-colors cursor-pointer"
             >
               <RefreshCw className="h-3 w-3" />
+            </button>
+
+            {/* Cross-platform Fullscreen Button (Solves mobile iframe fullscreen restrictions) */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen (Mobile Friendly)"}
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-neutral-300 hover:border-white/20 hover:text-white transition-colors cursor-pointer"
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize className="h-3 w-3" />
+                  <span className="hidden sm:inline">Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize className="h-3 w-3" />
+                  <span className="hidden sm:inline">Fullscreen</span>
+                </>
+              )}
             </button>
           </div>
         </div>

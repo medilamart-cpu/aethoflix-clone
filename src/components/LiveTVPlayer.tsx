@@ -88,8 +88,14 @@ export function LiveTVPlayer({ initialChannels }: LiveTVPlayerProps) {
               src={selectedChannel.embed}
               title={selectedChannel.name}
               className="h-full w-full border-0 bg-black"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-              allowFullScreen
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
+              allowFullScreen={true}
+              {...({
+                webkitallowfullscreen: "true",
+                mozallowfullscreen: "true",
+                playsInline: true,
+                "webkit-playsinline": "true",
+              } as any)}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
