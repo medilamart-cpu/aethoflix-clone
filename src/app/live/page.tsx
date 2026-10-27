@@ -1,7 +1,7 @@
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { liveChannels, type LiveChannel } from "@/lib/livetv";
-import { liveChannelDetail } from "@/lib/livetv";
+import { LiveTVPlayer } from "@/components/LiveTVPlayer";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -20,47 +20,22 @@ export default async function LivePage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">Live TV</h1>
-        <p className="mt-1 text-sm text-neutral-400">Public live TV channels from LiveTVGT.</p>
+        <div className="mb-6">
+          <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">Live TV</h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            Ad-free live broadcasts streaming directly via native Video.js HLS playback.
+          </p>
+        </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             Failed to load channels: {error}
           </div>
         )}
 
-        {!error && (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {channels.slice(0, 60).map((ch) => (
-              <LiveChannelCard key={ch.id} channel={ch} />
-            ))}
-          </div>
-        )}
-        {!error && channels.length > 60 && (
-          <p className="mt-4 text-xs text-neutral-500">
-            Showing first 60 of {channels.length} channels. Add pagination as needed.
-          </p>
-        )}
+        {!error && <LiveTVPlayer initialChannels={channels} />}
       </main>
       <Footer />
     </div>
-  );
-}
-
-function LiveChannelCard({ channel }: { channel: LiveChannel }) {
-  return (
-    <a
-      href={channel.embed}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group block rounded-xl border border-white/10 bg-white/5 p-3.5 transition-all hover:border-indigo-500/50 hover:bg-white/10"
-    >
-      <div className="flex items-center gap-1.5">
-        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Live</span>
-      </div>
-      <p className="mt-2 truncate text-sm font-semibold text-white group-hover:text-indigo-300 transition-colors">{channel.name}</p>
-      <p className="mt-1 text-[11px] text-neutral-400">Watch Channel ↗</p>
-    </a>
   );
 }

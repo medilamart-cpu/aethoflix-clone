@@ -156,6 +156,26 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     build_movie: (id) => `https://bingr.one/watch/movie/${id}`,
     build_tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
   },
+  {
+    label: "Server 10",
+    provider: "AutoEmbed",
+    base_url: "https://player.autoembed.cc",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    build_movie: (id) => `https://player.autoembed.cc/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    label: "Server 11",
+    provider: "EmbedSU",
+    base_url: "https://embed.su",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    build_movie: (id) => `https://embed.su/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`,
+  },
 ];
 
 // ── Anime providers (AniList or MAL IDs) ─────────────────────────────────────

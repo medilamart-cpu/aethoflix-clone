@@ -54,3 +54,56 @@ img {
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out;
 }
+
+/* ── Modern Video.js Dark Aesthetic ── */
+.video-js {
+  font-family: inherit;
+  background-color: #000;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0.75rem;
+}
+
+.video-js .vjs-big-play-button {
+  background-color: rgba(229, 13, 117, 0.85) !important;
+  border: 2px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 9999px !important;
+  width: 70px !important;
+  height: 70px !important;
+  line-height: 66px !important;
+  font-size: 32px !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+  box-shadow: 0 10px 25px -5px rgba(229, 13, 117, 0.5);
+  backdrop-filter: blur(8px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.video-js .vjs-big-play-button:hover {
+  background-color: #e50d75 !important;
+  transform: translate(-50%, -50%) scale(1.08) !important;
+  box-shadow: 0 15px 30px -5px rgba(229, 13, 117, 0.7);
+}
+
+.video-js .vjs-control-bar {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.4), transparent) !important;
+  height: 48px !important;
+  padding: 0 10px !important;
+  align-items: center !important;
+  backdrop-filter: blur(4px);
+}
+
+.video-js .vjs-play-progress {
+  background-color: #e50d75 !important;
+}
+
+.video-js .vjs-slider {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 4px;
+}
+
+.video-js .vjs-volume-level {
+  background-color: #e50d75 !important;
+}

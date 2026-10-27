@@ -22,7 +22,16 @@ export function MirrorPicker({ mirrors, selected, onSelect }: MirrorPickerProps)
         </span>
         {entries.map(([label, url]) => {
           const isSelected = selected === label;
-          const host = url.split("//")[1]?.split("/")[0]?.replace("www.", "") || "";
+          const isDirect =
+            url.endsWith(".m3u8") ||
+            url.endsWith(".mp4") ||
+            url.includes(".m3u8?") ||
+            url.includes(".mp4?") ||
+            url.startsWith("direct:");
+          const host = isDirect
+            ? "Direct CDN"
+            : url.split("//")[1]?.split("/")[0]?.replace("www.", "") || "";
+
           return (
             <button
               key={label}
@@ -31,13 +40,19 @@ export function MirrorPicker({ mirrors, selected, onSelect }: MirrorPickerProps)
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all cursor-pointer",
                 isSelected
-                  ? "border-indigo-500 bg-indigo-600/30 text-white shadow-md shadow-indigo-500/20"
+                  ? isDirect
+                    ? "border-emerald-500 bg-emerald-600/30 text-white shadow-md shadow-emerald-500/20"
+                    : "border-indigo-500 bg-indigo-600/30 text-white shadow-md shadow-indigo-500/20"
+                  : isDirect
+                  ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-300 hover:border-emerald-500/50 hover:bg-emerald-500/20"
                   : "border-white/10 bg-white/[0.04] text-neutral-300 hover:border-white/25 hover:bg-white/10 hover:text-white"
               )}
             >
-              {isSelected && <Check className="h-3 w-3 text-indigo-400" />}
+              {isSelected && <Check className="h-3 w-3 text-emerald-400" />}
               <span>{label}</span>
-              <span className="text-[10px] text-neutral-400 opacity-75">({host})</span>
+              <span className="text-[10px] text-neutral-400 opacity-75">
+                {isDirect ? "⚡ Direct" : `(${host})`}
+              </span>
             </button>
           );
         })}
