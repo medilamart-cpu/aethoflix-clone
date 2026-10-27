@@ -26,19 +26,60 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const [gateOpen, setGateOpen] = useState(isWatchGateEnabled());
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
-  const mirrorKeys = Object.keys(mirrors);
+  const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(null);
+
+  // Auto-resolve direct HLS stream from tgvidapi (0 ads, 0 popups, 100% native Video.js mobile player)
+  useEffect(() => {
+    if (!routingKey) return;
+    const parts = routingKey.split(":");
+    const type = parts[0];
+    const id = parts[1];
+    const s = parts[2];
+    const e = parts[3];
+
+    let isMounted = true;
+    let url = `/api/resolve-tg?type=${type}&id=${id}`;
+    if (type === "tv" && s && e) {
+      url += `&s=${s}&e=${e}`;
+    }
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data.ok && data.playable) {
+          const directObj = {
+            url: data.playable,
+            label: "⚡ Direct CDN (Video.js)",
+          };
+          setDirectStream(directObj);
+          setSelectedMirror(directObj.label);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [routingKey]);
+
+  // Combine direct stream with mirror options
+  const allMirrors: Record<string, string> = directStream
+    ? { [directStream.label]: directStream.url, ...mirrors }
+    : mirrors;
+  const mirrorKeys = Object.keys(allMirrors);
   const [selectedMirror, setSelectedMirror] = useState<string | null>(mirrorKeys[0] || null);
   const [iframeError, setIframeError] = useState(false);
   const [adShieldActive, setAdShieldActive] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    const keys = Object.keys(mirrors);
-    if (keys.length > 0 && (!selectedMirror || !mirrors[selectedMirror])) {
+    const keys = Object.keys(allMirrors);
+    if (keys.length > 0 && (!selectedMirror || !allMirrors[selectedMirror])) {
       setSelectedMirror(keys[0]);
     }
     setIframeError(false);
-  }, [routingKey, mirrors, selectedMirror]);
+  }, [routingKey, allMirrors, selectedMirror]);
 
   const [blockedAdsCount, setBlockedAdsCount] = useState(0);
 
@@ -185,7 +226,7 @@ export function VideoPlayer({
     );
   }
 
-  const url = selectedMirror ? mirrors[selectedMirror] : mirrorKeys[0] ? mirrors[mirrorKeys[0]] : null;
+  const url = selectedMirror ? allMirrors[selectedMirror] : mirrorKeys[0] ? allMirrors[mirrorKeys[0]] : null;
 
   // Determine if the selected source is a direct stream suitable for Video.js
   const isDirectStream =
@@ -194,6 +235,7 @@ export function VideoPlayer({
       url.endsWith(".mp4") ||
       url.includes(".m3u8?") ||
       url.includes(".mp4?") ||
+      url.includes("/api/out?") ||
       url.startsWith("direct:"));
 
   const directStreamUrl = url?.replace(/^direct:/, "") || "";
@@ -269,13 +311,18 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 3. Unsandboxed Anti-Ad Embed Player (Mobile Fullscreen Enabled) */}
+        {/* 3. Anti-Ad Embed Player (Mobile Fullscreen & Anti-Popup Sandbox Enabled) */}
         {url && !isDirectStream && !iframeError && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}
             title={`${routingTitle} — ${selectedMirror}`}
             className="h-full w-full border-0 bg-black"
+            sandbox={
+              adShieldActive
+                ? "allow-scripts allow-same-origin allow-forms allow-presentation"
+                : undefined
+            }
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
             allowFullScreen={true}
             {...({
@@ -294,7 +341,7 @@ export function VideoPlayer({
       <div className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <MirrorPicker
-            mirrors={mirrors}
+            mirrors={allMirrors}
             selected={selectedMirror}
             onSelect={(label) => {
               setSelectedMirror(label);
