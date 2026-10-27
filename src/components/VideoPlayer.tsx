@@ -28,19 +28,27 @@ export function VideoPlayer({
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
   const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(null);
 
-  // Auto-resolve direct HLS stream from tgvidapi (0 ads, 0 popups, 100% native Video.js mobile player)
+  // Auto-resolve direct HLS stream (0 ads, 0 popups, 100% native Video.js mobile player)
+  // - Movies/TV: resolved from tgvidapi (TG HUB v2 / TG OUT)
+  // - Anime: resolved from ReCloud (cdn.4animo.xyz HD-1)
   useEffect(() => {
     if (!routingKey) return;
     const parts = routingKey.split(":");
     const type = parts[0];
     const id = parts[1];
-    const s = parts[2];
-    const e = parts[3];
+    const s = parts[2] || "1";
+    const e = parts[3] || "1";
 
     let isMounted = true;
-    let url = `/api/resolve-tg?type=${type}&id=${id}`;
-    if (type === "tv" && s && e) {
-      url += `&s=${s}&e=${e}`;
+    let url = "";
+
+    if (type === "anime") {
+      url = `/api/resolve-anime?id=${id}&s=${s}&e=${e}`;
+    } else {
+      url = `/api/resolve-tg?type=${type}&id=${id}`;
+      if (type === "tv" && s && e) {
+        url += `&s=${s}&e=${e}`;
+      }
     }
 
     fetch(url)
@@ -50,7 +58,7 @@ export function VideoPlayer({
         if (data.ok && data.playable) {
           const directObj = {
             url: data.playable,
-            label: "⚡ Direct CDN (Video.js)",
+            label: type === "anime" ? "⚡ Direct Anime (Video.js)" : "⚡ Direct CDN (Video.js)",
           };
           setDirectStream(directObj);
           setSelectedMirror(directObj.label);
@@ -63,10 +71,23 @@ export function VideoPlayer({
     };
   }, [routingKey]);
 
-  // Combine direct stream with mirror options
+  // Clean mirrors: If direct stream is active or tgvid is requested, replace ad-infested tgvid.lovable embed iframe
+  const cleanMirrors: Record<string, string> = {};
+  for (const [key, val] of Object.entries(mirrors)) {
+    if (val.includes("tgvid.lovable.app")) {
+      // If direct stream is available, don't show the ad-infested iframe mirror
+      if (!directStream) {
+        cleanMirrors[key] = val;
+      }
+    } else {
+      cleanMirrors[key] = val;
+    }
+  }
+
+  // Combine direct stream with mirror options (Direct CDN placed first)
   const allMirrors: Record<string, string> = directStream
-    ? { [directStream.label]: directStream.url, ...mirrors }
-    : mirrors;
+    ? { [directStream.label]: directStream.url, ...cleanMirrors }
+    : cleanMirrors;
   const mirrorKeys = Object.keys(allMirrors);
   const [selectedMirror, setSelectedMirror] = useState<string | null>(mirrorKeys[0] || null);
   const [iframeError, setIframeError] = useState(false);
@@ -135,8 +156,7 @@ export function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Cross-platform fullscreen toggle
-  // Mobile browsers (especially iOS Safari) block requestFullscreen() on cross-origin iframes.
-  // We seamlessly support both standard HTML5 Fullscreen API and CSS Pseudo-Fullscreen for mobile.
+  // Supports native iOS Safari <video> fullscreen, standard HTML5 Fullscreen API, and CSS pseudo-fullscreen.
   const toggleFullscreen = useCallback(async () => {
     const container = viewportRef.current;
     if (!container) return;
@@ -157,7 +177,19 @@ export function VideoPlayer({
       return;
     }
 
-    // 2. Try native Fullscreen API first (Windows, Mac, Android Chrome)
+    // 2. Try native <video> element WebKit fullscreen on iOS Safari / iPad
+    const videoEl = container.querySelector("video");
+    if (videoEl && (videoEl as any).webkitEnterFullscreen && !document.fullscreenEnabled) {
+      try {
+        (videoEl as any).webkitEnterFullscreen();
+        setIsFullscreen(true);
+        return;
+      } catch (err) {
+        console.warn("[Fullscreen] webkitEnterFullscreen failed, continuing to viewport fallback:", err);
+      }
+    }
+
+    // 3. Try standard HTML5 Fullscreen API (Windows, Mac, Android Chrome)
     const canNativeFs =
       document.fullscreenEnabled ||
       (document as any).webkitFullscreenEnabled ||
@@ -179,7 +211,7 @@ export function VideoPlayer({
       }
     }
 
-    // 3. Viewport fallback (iOS Safari / mobile WebKit)
+    // 4. Viewport fallback (iOS Safari / mobile WebKit for iframes)
     setIsFullscreen(true);
     document.body.style.overflow = "hidden";
     try {
@@ -228,17 +260,24 @@ export function VideoPlayer({
 
   const url = selectedMirror ? allMirrors[selectedMirror] : mirrorKeys[0] ? allMirrors[mirrorKeys[0]] : null;
 
+  // Intercept any TG Vid mirror so it NEVER loads the ad-infested tgvid.lovable.app iframe!
+  const isTgVidMirror = !!(selectedMirror?.includes("TG Vid") || url?.includes("tgvid.lovable.app"));
+
   // Determine if the selected source is a direct stream suitable for Video.js
   const isDirectStream =
-    url &&
-    (url.endsWith(".m3u8") ||
-      url.endsWith(".mp4") ||
-      url.includes(".m3u8?") ||
-      url.includes(".mp4?") ||
-      url.includes("/api/out?") ||
-      url.startsWith("direct:"));
+    (url &&
+      (url.endsWith(".m3u8") ||
+        url.endsWith(".mp4") ||
+        url.includes(".m3u8?") ||
+        url.includes(".mp4?") ||
+        url.includes("/api/out?") ||
+        url.startsWith("direct:"))) ||
+    (isTgVidMirror && !!directStream);
 
-  const directStreamUrl = url?.replace(/^direct:/, "") || "";
+  const directStreamUrl =
+    isTgVidMirror && directStream
+      ? directStream.url
+      : url?.replace(/^direct:/, "") || "";
 
   return (
     <div className="flex flex-col gap-3">
@@ -272,7 +311,7 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 1. Direct CDN Player with Video.js */}
+        {/* 1. Direct CDN Player with Video.js (0 ads, 0 popups, 100% mobile fullscreen) */}
         {url && isDirectStream && (
           <VideoJSPlayer
             key={`vjs-${directStreamUrl}-${reloadKey}`}
@@ -284,7 +323,18 @@ export function VideoPlayer({
           />
         )}
 
-        {/* 2. Error Fallback State */}
+        {/* 2. Resolving TG Direct Stream State (Prevents ever falling back to ad-infested iframe) */}
+        {isTgVidMirror && !directStream && !iframeError && (
+          <div className="flex h-full w-full items-center justify-center bg-black">
+            <div className="text-center px-6">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-400" />
+              <p className="mt-3 text-sm text-neutral-300 font-medium">Connecting Direct Ad-Free Stream...</p>
+              <p className="mt-1 text-xs text-neutral-500">Bypassing iframe ads and initializing mobile player</p>
+            </div>
+          </div>
+        )}
+
+        {/* 3. Error Fallback State */}
         {url && iframeError && (
           <div className="flex h-full w-full items-center justify-center bg-black">
             <div className="text-center px-6">
@@ -311,8 +361,8 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 3. Anti-Ad Embed Player (Mobile Fullscreen & Anti-Popup Sandbox Enabled) */}
-        {url && !isDirectStream && !iframeError && (
+        {/* 4. Anti-Ad Embed Player (Mobile Fullscreen & Anti-Popup Sandbox Enabled) */}
+        {url && !isDirectStream && !iframeError && !isTgVidMirror && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}

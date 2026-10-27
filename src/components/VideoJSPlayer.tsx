@@ -38,7 +38,7 @@ export function VideoJSPlayer({
       className={`w-full h-full relative overflow-hidden rounded-xl bg-black ${className}`}
     >
       <VideoPlayer poster={poster}>
-        <VideoSkin style={{ width: "100%", height: "100%", aspectRatio: "16 / 9" }}>
+        <VideoSkin style={{ width: "100%", height: "100%" }}>
           {isHls ? (
             <HlsJsVideo
               src={src}
