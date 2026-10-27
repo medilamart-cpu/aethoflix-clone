@@ -30,12 +30,44 @@ export function VideoPlayer({
   const [gateOpen, setGateOpen] = useState(isWatchGateEnabled());
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
   const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(null);
+  const [verifiedServers, setVerifiedServers] = useState<Array<{ label: string; url: string; latency: number }> | null>(null);
 
   // Auto-Racer State: Real-time mirror latency & fastest candidate detection
   const [latencies, setLatencies] = useState<Record<string, number>>({});
   const [fastestLabel, setFastestLabel] = useState<string | null>(null);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const userInteractedRef = useRef(false);
+
+  // Dynamic Movie Availability & Sequential Server Numbering Check
+  useEffect(() => {
+    if (!routingKey) return;
+    const parts = routingKey.split(":");
+    const type = parts[0];
+    const id = parts[1];
+    const s = parts[2] || "1";
+    const e = parts[3] || "1";
+
+    let isMounted = true;
+    fetch(`/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted || !data.ok || !data.servers?.length) return;
+        setVerifiedServers(data.servers);
+        const latMap: Record<string, number> = {};
+        for (const srv of data.servers) {
+          latMap[srv.label] = srv.latency;
+        }
+        setLatencies((prev) => ({ ...prev, ...latMap }));
+        if (data.servers[0]?.label) {
+          setFastestLabel(data.servers[0].label);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [routingKey]);
 
   // Auto-resolve direct HLS stream (0 ads, 0 popups, 100% native Video.js mobile player)
   // - Movies/TV: resolved from tgvidapi (TG HUB v2 / TG OUT)
@@ -81,8 +113,16 @@ export function VideoPlayer({
     };
   }, [routingKey]);
 
-  // Clean mirrors: If direct stream is active or tgvid is requested, replace ad-infested tgvid.lovable embed iframe
+  // Clean mirrors: Prioritize movie-specific verified working servers (dynamically numbered)
   const cleanMirrors: Record<string, string> = useMemo(() => {
+    if (verifiedServers && verifiedServers.length > 0) {
+      const res: Record<string, string> = {};
+      for (const s of verifiedServers) {
+        res[s.label] = s.url;
+      }
+      return res;
+    }
+
     const res: Record<string, string> = {};
     for (const [key, val] of Object.entries(mirrors)) {
       if (val.includes("tgvid.lovable.app")) {
@@ -95,7 +135,7 @@ export function VideoPlayer({
       }
     }
     return res;
-  }, [mirrors, directStream]);
+  }, [mirrors, directStream, verifiedServers]);
 
   // Combine direct stream with mirror options (Direct CDN placed first)
   const allMirrors: Record<string, string> = useMemo(() => {
@@ -558,7 +598,9 @@ export function VideoPlayer({
             <span>
               {isDirectStream
                 ? "Streaming ad-free directly via high-speed CDN in native Video.js."
-                : "Unsandboxed player enabled with Stealth Ad Shield & Auto-Racer."}
+                : verifiedServers
+                ? `${verifiedServers.length} servers verified available for this title.`
+                : "Checking server availability for this title..."}
             </span>
           </div>
           {fastestLabel && latencies[fastestLabel] && (
