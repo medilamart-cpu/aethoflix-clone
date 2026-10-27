@@ -40,8 +40,11 @@ export function VideoPlayer({
     setIframeError(false);
   }, [routingKey, mirrors, selectedMirror]);
 
+  const [blockedAdsCount, setBlockedAdsCount] = useState(0);
+
   // Stealth Ad Shield: Neutralizes rogue popup storms and tab redirects
-  // while preserving native [native code] signature to prevent sandbox / anti-adblock detection
+  // Providers like Vidrift check: if (!window.open() || win.closed) throw "Remove sandboxing"
+  // Returning a realistic stub window satisfies this check without opening any real window/tab.
   useEffect(() => {
     if (!adShieldActive) return;
 
@@ -49,7 +52,22 @@ export function VideoPlayer({
 
     const stealthOpen = function open(...args: any[]) {
       console.info("[Ad Shield] Prevented unwanted popup window:", ...args);
-      return null;
+      setBlockedAdsCount((c) => c + 1);
+
+      // Return realistic stub Window object to deceive sandbox/popup detection
+      const stubWindow: any = {
+        closed: false,
+        focus: () => {},
+        blur: () => {},
+        close: () => { stubWindow.closed = true; },
+        postMessage: () => {},
+        location: { href: "about:blank", replace: () => {}, assign: () => {} },
+        document: { write: () => {}, open: () => {}, close: () => {} },
+        opener: window,
+        window: null,
+      };
+      stubWindow.window = stubWindow;
+      return stubWindow;
     };
 
     // Ensure toString() returns standard native code signature
@@ -67,11 +85,6 @@ export function VideoPlayer({
       window.open = stealthOpen as unknown as typeof window.open;
     }
 
-    // Intercept top-level navigation hijack attempts from rogue ad scripts
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // If user didn't explicitly click internal navigation, warn before leaving
-      // Only active if an ad attempts to redirect top-level window
-    };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
 
@@ -213,7 +226,10 @@ export function VideoPlayer({
               >
                 {adShieldActive ? (
                   <>
-                    <ShieldCheck className="h-3 w-3 text-indigo-400" /> Ad Shield Active
+                    <ShieldCheck className="h-3 w-3 text-indigo-400" />
+                    <span>
+                      Ad Shield {blockedAdsCount > 0 ? `(${blockedAdsCount} blocked)` : "Active"}
+                    </span>
                   </>
                 ) : (
                   <>
