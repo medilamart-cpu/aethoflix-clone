@@ -8,6 +8,7 @@ interface MirrorPickerProps {
   selected: string | null;
   latencies?: Record<string, number>;
   fastestLabel?: string | null;
+  isLoading?: boolean;
   onSelect: (label: string, url: string) => void;
 }
 
@@ -16,8 +17,27 @@ export function MirrorPicker({
   selected,
   latencies = {},
   fastestLabel = null,
+  isLoading = false,
   onSelect,
 }: MirrorPickerProps) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-neutral-400">
+            <Server className="h-3.5 w-3.5 text-indigo-400 animate-spin" /> Finalizing servers:
+          </span>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-32 rounded-lg bg-emerald-500/10 border border-emerald-500/20 animate-pulse" />
+            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
+            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
+            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const entries = Object.entries(mirrors);
 
   return (

@@ -29,89 +29,120 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const [gateOpen, setGateOpen] = useState(isWatchGateEnabled());
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
-  const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(null);
-  const [verifiedServers, setVerifiedServers] = useState<Array<{ label: string; url: string; latency: number }> | null>(null);
 
-  // Auto-Racer State: Real-time mirror latency & fastest candidate detection
-  const [latencies, setLatencies] = useState<Record<string, number>>({});
-  const [fastestLabel, setFastestLabel] = useState<string | null>(null);
+  // Cached server state check (0ms instant paint for returning visits)
+  const initialCache = useMemo(() => {
+    if (typeof window === "undefined" || !routingKey) return null;
+    try {
+      const raw = sessionStorage.getItem(`aethoflix_final_servers_${routingKey}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [routingKey]);
+
+  const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(
+    initialCache?.directStream ?? null
+  );
+  const [verifiedServers, setVerifiedServers] = useState<Array<{ label: string; url: string; latency: number }> | null>(
+    initialCache?.verifiedServers ?? null
+  );
+  const [latencies, setLatencies] = useState<Record<string, number>>(initialCache?.latencies ?? {});
+  const [fastestLabel, setFastestLabel] = useState<string | null>(initialCache?.verifiedServers?.[0]?.label ?? null);
+  const [isFinalized, setIsFinalized] = useState<boolean>(!!initialCache);
+  const [selectedMirror, setSelectedMirror] = useState<string | null>(initialCache?.selectedMirror ?? null);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const userInteractedRef = useRef(false);
 
-  // Dynamic Movie Availability & Sequential Server Numbering Check
+  // Single-pass atomic server finalization:
+  // Resolves Direct CDN and verified available servers in parallel, then commits
+  // them in ONE single batch update. Prevents the server list from jumping/rearranging 2-3 times!
   useEffect(() => {
     if (!routingKey) return;
-    const parts = routingKey.split(":");
-    const type = parts[0];
-    const id = parts[1];
-    const s = parts[2] || "1";
-    const e = parts[3] || "1";
 
-    let isMounted = true;
-    fetch(`/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!isMounted || !data.ok || !data.servers?.length) return;
-        setVerifiedServers(data.servers);
-        const latMap: Record<string, number> = {};
-        for (const srv of data.servers) {
-          latMap[srv.label] = srv.latency;
-        }
-        setLatencies((prev) => ({ ...prev, ...latMap }));
-        if (data.servers[0]?.label) {
-          setFastestLabel(data.servers[0].label);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
-  }, [routingKey]);
-
-  // Auto-resolve direct HLS stream (0 ads, 0 popups, 100% native Video.js mobile player)
-  // - Movies/TV: resolved from tgvidapi (TG HUB v2 / TG OUT)
-  // - Anime: resolved from ReCloud (cdn.4animo.xyz HD-1)
-  useEffect(() => {
-    if (!routingKey) return;
-    const parts = routingKey.split(":");
-    const type = parts[0];
-    const id = parts[1];
-    const s = parts[2] || "1";
-    const e = parts[3] || "1";
-
-    let isMounted = true;
-    let url = "";
-
-    if (type === "anime") {
-      url = `/api/resolve-anime?id=${id}&s=${s}&e=${e}`;
-    } else {
-      url = `/api/resolve-tg?type=${type}&id=${id}`;
-      if (type === "tv" && s && e) {
-        url += `&s=${s}&e=${e}`;
-      }
+    // If already restored from cache, no rearrangement needed
+    if (initialCache) {
+      setIsFinalized(true);
+      return;
     }
 
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!isMounted) return;
-        if (data.ok && data.playable) {
-          const directObj = {
-            url: data.playable,
-            label: type === "anime" ? "⚡ Direct Anime (Video.js)" : "⚡ Direct CDN (Video.js)",
-          };
-          setDirectStream(directObj);
-          // Direct CDN stream is the absolute highest priority (0 ads, native player)
-          setSelectedMirror(directObj.label);
+    const parts = routingKey.split(":");
+    const type = parts[0];
+    const id = parts[1];
+    const s = parts[2] || "1";
+    const e = parts[3] || "1";
+
+    let isMounted = true;
+    setIsFinalized(false);
+
+    const directUrl =
+      type === "anime"
+        ? `/api/resolve-anime?id=${id}&s=${s}&e=${e}`
+        : `/api/resolve-tg?type=${type}&id=${id}${type === "tv" && s && e ? `&s=${s}&e=${e}` : ""}`;
+
+    const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
+
+    Promise.allSettled([
+      fetch(directUrl).then((r) => r.json()).catch(() => null),
+      fetch(checkServersUrl).then((r) => r.json()).catch(() => null),
+    ]).then(([directRes, checkRes]) => {
+      if (!isMounted) return;
+
+      let foundDirect: { url: string; label: string } | null = null;
+      if (directRes.status === "fulfilled" && directRes.value?.ok && directRes.value?.playable) {
+        foundDirect = {
+          url: directRes.value.playable,
+          label: type === "anime" ? "⚡ Direct Anime (Video.js)" : "⚡ Direct CDN (Video.js)",
+        };
+      }
+
+      let foundServers: Array<{ label: string; url: string; latency: number }> = [];
+      const latMap: Record<string, number> = {};
+
+      if (checkRes.status === "fulfilled" && checkRes.value?.ok && checkRes.value?.servers?.length) {
+        foundServers = checkRes.value.servers;
+        for (const srv of foundServers) {
+          latMap[srv.label] = srv.latency;
         }
-      })
-      .catch(() => {});
+      } else {
+        // Fallback to default clean mirrors if probe fails
+        for (const [lbl, u] of Object.entries(mirrors)) {
+          if (!u.includes("tgvid.lovable.app") || !foundDirect) {
+            foundServers.push({ label: lbl, url: u, latency: 150 });
+          }
+        }
+      }
+
+      const defaultSelection = foundDirect ? foundDirect.label : (foundServers[0]?.label || null);
+
+      // Single atomic batch update - renders directly in finalized state!
+      setDirectStream(foundDirect);
+      setVerifiedServers(foundServers);
+      setLatencies(latMap);
+      if (foundServers[0]?.label) setFastestLabel(foundServers[0].label);
+      if (!userInteractedRef.current && defaultSelection) {
+        setSelectedMirror(defaultSelection);
+      }
+      setIsFinalized(true);
+
+      // Cache for instant 0ms future navigation
+      try {
+        sessionStorage.setItem(
+          `aethoflix_final_servers_${routingKey}`,
+          JSON.stringify({
+            directStream: foundDirect,
+            verifiedServers: foundServers,
+            latencies: latMap,
+            selectedMirror: defaultSelection || "",
+          })
+        );
+      } catch {}
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [routingKey]);
+  }, [routingKey, initialCache, mirrors]);
 
   // Clean mirrors: Prioritize movie-specific verified working servers (dynamically numbered)
   const cleanMirrors: Record<string, string> = useMemo(() => {
@@ -126,10 +157,7 @@ export function VideoPlayer({
     const res: Record<string, string> = {};
     for (const [key, val] of Object.entries(mirrors)) {
       if (val.includes("tgvid.lovable.app")) {
-        // If direct stream is available, don't show the ad-infested iframe mirror
-        if (!directStream) {
-          res[key] = val;
-        }
+        if (!directStream) res[key] = val;
       } else {
         res[key] = val;
       }
@@ -145,43 +173,18 @@ export function VideoPlayer({
   }, [directStream, cleanMirrors]);
 
   const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
-  const [selectedMirror, setSelectedMirror] = useState<string | null>(null);
   const [iframeError, setIframeError] = useState(false);
   const [adShieldActive, setAdShieldActive] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Initialize selected mirror with historically fastest or first mirror
+  // Background health monitor: Only runs for auto-failover, does not re-shuffle finalized UI
   useEffect(() => {
-    if (selectedMirror && allMirrors[selectedMirror]) return;
-    if (directStream) {
-      setSelectedMirror(directStream.label);
-      return;
-    }
-    const historical = getHistoricallyFastest(cleanMirrors);
-    if (historical && allMirrors[historical]) {
-      setSelectedMirror(historical);
-    } else if (mirrorKeys.length > 0) {
-      setSelectedMirror(mirrorKeys[0]);
-    }
-  }, [allMirrors, cleanMirrors, directStream, mirrorKeys, selectedMirror]);
-
-  // Real-time Fastest Server Auto-Racer:
-  // Concurrently probes candidate servers to pick the fastest responding server from the user's location
-  useEffect(() => {
-    if (Object.keys(cleanMirrors).length === 0) return;
+    if (!isFinalized || Object.keys(cleanMirrors).length === 0) return;
 
     const cancel = raceCandidateMirrors(cleanMirrors, {
-      onFirstWinner: (label, latency) => {
-        setFastestLabel(label);
-        // Only auto-switch to first responder if direct stream isn't active and user hasn't chosen manually
-        if (!directStream && !userInteractedRef.current) {
-          setSelectedMirror(label);
-          setAutoSwitchNotice(`⚡ Auto-selected fastest server: ${label} (${latency}ms)`);
-          setTimeout(() => setAutoSwitchNotice(null), 3500);
-        }
-      },
+      onFirstWinner: () => {},
       onUpdate: (updatedLatencies, fastest) => {
-        setLatencies({ ...updatedLatencies });
+        setLatencies((prev) => ({ ...prev, ...updatedLatencies }));
         if (fastest) setFastestLabel(fastest);
       },
     });
@@ -189,7 +192,7 @@ export function VideoPlayer({
     return () => {
       cancel();
     };
-  }, [cleanMirrors, directStream]);
+  }, [isFinalized, cleanMirrors]);
 
   // Auto-failover: If current server fails, immediately promote the next fastest responding mirror
   const handleAutoFailover = useCallback(() => {
@@ -512,6 +515,7 @@ export function VideoPlayer({
             selected={selectedMirror}
             latencies={latencies}
             fastestLabel={fastestLabel}
+            isLoading={!isFinalized}
             onSelect={(label) => {
               userInteractedRef.current = true;
               setSelectedMirror(label);
