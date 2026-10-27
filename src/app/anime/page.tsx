@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 import { trendingAnime, animeDisplayName, type AnimeMedia } from "@/lib/anilist";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 1800;
 

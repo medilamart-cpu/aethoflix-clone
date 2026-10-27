@@ -3,6 +3,7 @@ import { Footer } from "@/components/Footer";
 import { MediaRow } from "@/components/MediaRow";
 import { tvPopular, tvTopRated, tvAiringToday } from "@/lib/tmdb";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 1800;
 

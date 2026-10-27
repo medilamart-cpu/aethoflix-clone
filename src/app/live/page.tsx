@@ -3,6 +3,7 @@ import { Footer } from "@/components/Footer";
 import { liveChannels, type LiveChannel } from "@/lib/livetv";
 import { liveChannelDetail } from "@/lib/livetv";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 3600;
 

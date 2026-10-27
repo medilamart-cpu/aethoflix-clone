@@ -4,6 +4,7 @@ import { Footer } from "@/components/Footer";
 import { MovieDetailPage } from "@/components/DetailPage";
 import { movieDetail } from "@/lib/tmdb";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 1800;
 

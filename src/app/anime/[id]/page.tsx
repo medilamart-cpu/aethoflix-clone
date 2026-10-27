@@ -7,6 +7,7 @@ import { ArrowLeft, Star, Play } from "lucide-react";
 import { animeDetail, animeDisplayName, type AnimeMedia } from "@/lib/anilist";
 import { AnimePlayer } from "@/components/AnimePlayer";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 1800;
 
