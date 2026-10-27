@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import videojs from "video.js";
-import "video.js/dist/video-js.css";
+import React from "react";
+import "@videojs/react/video/skin.css";
+import { VideoPlayer, VideoSkin, Video } from "@videojs/react/video";
+import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
 
 export type VideoJsPlayer = any;
 
@@ -13,7 +14,7 @@ export interface VideoJSPlayerProps {
   autoplay?: boolean;
   controls?: boolean;
   className?: string;
-  onReady?: (player: VideoJsPlayer) => void;
+  onReady?: (player: any) => void;
   onError?: (error: any) => void;
 }
 
@@ -22,90 +23,41 @@ export function VideoJSPlayer({
   type,
   poster,
   autoplay = false,
-  controls = true,
   className = "",
   onReady,
   onError,
 }: VideoJSPlayerProps) {
-  const videoRef = useRef<HTMLDivElement | null>(null);
-  const playerRef = useRef<any>(null);
-
-  // Auto-detect MIME type if not specified
-  const detectedType =
-    type ||
-    (src.includes(".m3u8")
-      ? "application/x-mpegURL"
-      : src.includes(".mp4")
-      ? "video/mp4"
-      : src.includes(".webm")
-      ? "video/webm"
-      : "application/x-mpegURL");
-
-  useEffect(() => {
-    // Make sure Video.js player is only initialized once
-    if (!playerRef.current && videoRef.current) {
-      const videoElement = document.createElement("video-js");
-      videoElement.classList.add("vjs-big-play-centered", "vjs-fluid");
-      videoRef.current.appendChild(videoElement);
-
-      const player: any = videojs(
-        videoElement,
-        {
-          autoplay,
-          controls,
-          responsive: true,
-          fluid: true,
-          poster,
-          playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
-          controlBar: {
-            skipButtons: {
-              forward: 10,
-              backward: 10,
-            },
-          },
-          sources: [
-            {
-              src,
-              type: detectedType,
-            },
-          ],
-        },
-        () => {
-          if (onReady) {
-            onReady(player);
-          }
-        }
-      );
-
-      playerRef.current = player;
-
-      player.on("error", () => {
-        const err = player.error();
-        console.error("[Video.js Error]", err);
-        if (onError) onError(err);
-      });
-    } else if (playerRef.current) {
-      // Update existing player source
-      const player = playerRef.current;
-      player.src({ src, type: detectedType });
-      if (poster) player.poster(poster);
-    }
-  }, [src, detectedType, poster, autoplay, controls, onReady, onError]);
-
-  // Dispose player on unmount
-  useEffect(() => {
-    const player = playerRef.current;
-    return () => {
-      if (player && !player.isDisposed()) {
-        player.dispose();
-        playerRef.current = null;
-      }
-    };
-  }, []);
+  const isHls =
+    type === "application/x-mpegURL" ||
+    src.includes(".m3u8") ||
+    (!src.includes(".mp4") && !src.includes(".webm"));
 
   return (
-    <div data-vjs-player className={`w-full h-full relative overflow-hidden rounded-xl ${className}`}>
-      <div ref={videoRef} className="w-full h-full" />
+    <div
+      data-vjs-player
+      className={`w-full h-full relative overflow-hidden rounded-xl bg-black ${className}`}
+    >
+      <VideoPlayer poster={poster}>
+        <VideoSkin style={{ width: "100%", height: "100%", aspectRatio: "16 / 9" }}>
+          {isHls ? (
+            <HlsJsVideo
+              src={src}
+              autoPlay={autoplay}
+              playsInline
+              onLoadedMetadata={() => onReady?.(null)}
+              onError={(e) => onError?.(e)}
+            />
+          ) : (
+            <Video
+              src={src}
+              autoPlay={autoplay}
+              playsInline
+              onLoadedMetadata={() => onReady?.(null)}
+              onError={(e) => onError?.(e)}
+            />
+          )}
+        </VideoSkin>
+      </VideoPlayer>
     </div>
   );
 }
