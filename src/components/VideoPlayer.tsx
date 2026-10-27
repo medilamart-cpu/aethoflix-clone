@@ -6,6 +6,7 @@ import { MirrorPicker } from "./MirrorPicker";
 import { WatchGate } from "./WatchGate";
 import { isWatchGateEnabled } from "@/lib/watchgate";
 import { VideoJSPlayer } from "./VideoJSPlayer";
+import { VlcButton } from "./VlcButton";
 import { raceCandidateMirrors, getHistoricallyFastest } from "@/lib/serverRacer";
 import { isProviderSandboxCompatible } from "@/lib/providers";
 
@@ -346,6 +347,8 @@ export function VideoPlayer({
       ? directStream.url
       : url?.replace(/^direct:/, "") || "";
 
+  const activeStreamUrl = (isDirectStream && directStreamUrl) ? directStreamUrl : (directStream?.url || null);
+
   return (
     <div className="flex flex-col gap-3">
       {/* Video Viewport (Supports Native & Mobile Viewport Fullscreen) */}
@@ -507,6 +510,15 @@ export function VideoPlayer({
                   </>
                 )}
               </button>
+            )}
+
+            {/* Stream in VLC & External Players */}
+            {activeStreamUrl && (
+              <VlcButton
+                streamUrl={activeStreamUrl}
+                title={routingTitle}
+                compact={true}
+              />
             )}
 
             <button

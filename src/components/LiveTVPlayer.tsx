@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Tv, Play, Search, Zap, RefreshCw, Radio } from "lucide-react";
 import { VideoJSPlayer } from "./VideoJSPlayer";
+import { VlcButton } from "./VlcButton";
 import type { LiveChannel, LiveChannelServer } from "@/lib/livetv";
 
 interface LiveTVPlayerProps {
@@ -148,9 +149,16 @@ export function LiveTVPlayer({ initialChannels }: LiveTVPlayerProps) {
                 </div>
               )}
               {activeServer?.playable && (
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
-                  <Zap className="h-3 w-3" /> Video.js Direct
-                </span>
+                <>
+                  <VlcButton
+                    streamUrl={activeServer.playable}
+                    title={`Live TV - ${selectedChannel.name}`}
+                    compact={true}
+                  />
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
+                    <Zap className="h-3 w-3" /> Video.js Direct
+                  </span>
+                </>
               )}
             </div>
           </div>
