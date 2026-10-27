@@ -7,6 +7,7 @@ import { WatchGate } from "./WatchGate";
 import { isWatchGateEnabled } from "@/lib/watchgate";
 import { VideoJSPlayer } from "./VideoJSPlayer";
 import { raceCandidateMirrors, getHistoricallyFastest } from "@/lib/serverRacer";
+import { isProviderSandboxCompatible } from "@/lib/providers";
 
 interface VideoPlayerProps {
   routingKey: string; // "movie:1400940"
@@ -442,7 +443,7 @@ export function VideoPlayer({
             title={`${routingTitle} — ${selectedMirror}`}
             className="h-full w-full border-0 bg-black"
             sandbox={
-              adShieldActive
+              adShieldActive && isProviderSandboxCompatible(selectedMirror || url || "")
                 ? "allow-scripts allow-same-origin allow-forms allow-presentation"
                 : undefined
             }
@@ -488,7 +489,11 @@ export function VideoPlayer({
               <button
                 type="button"
                 onClick={() => setAdShieldActive(!adShieldActive)}
-                title="Toggle Stealth Ad Shield to block popups and redirects"
+                title={
+                  isProviderSandboxCompatible(selectedMirror || url || "")
+                    ? "Sandboxed Mode Active: HTML5 iframe sandbox + Stealth Ad Shield enabled"
+                    : "Stealth Mode Active: Server requires unsandboxed iframe; top-window Stealth Ad Shield is actively intercepting popups"
+                }
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
                   adShieldActive
                     ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25"
@@ -499,7 +504,8 @@ export function VideoPlayer({
                   <>
                     <ShieldCheck className="h-3 w-3 text-indigo-400" />
                     <span>
-                      Ad Shield {blockedAdsCount > 0 ? `(${blockedAdsCount} blocked)` : "Active"}
+                      {isProviderSandboxCompatible(selectedMirror || url || "") ? "Ad Shield (Sandboxed)" : "Ad Shield (Stealth)"}
+                      {blockedAdsCount > 0 ? ` (${blockedAdsCount})` : ""}
                     </span>
                   </>
                 ) : (

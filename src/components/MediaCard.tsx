@@ -19,7 +19,7 @@ export function MediaCard({ item, href, title }: MovieCardProps) {
     <Link href={href} className="group block flex-shrink-0">
       <div className="relative aspect-[2/3] w-32 overflow-hidden rounded-lg border border-white/5 bg-white/5 sm:w-36 md:w-40">
         <Image
-          src={posterUrl(item.poster_path, "w500")}
+          src={posterUrl(item.poster_path, "w342")}
           alt={safeTitle}
           fill
           sizes="(max-width: 768px) 128px, (max-width: 1024px) 144px, 160px"

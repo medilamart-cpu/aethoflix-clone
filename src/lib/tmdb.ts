@@ -7,18 +7,29 @@
  * Get a free API key at: https://www.themoviedb.org/settings/api
  */
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
+const TMDB_API_KEYS: string[] = [
+  process.env.NEXT_PUBLIC_TMDB_API_KEY,
+  "fca1c3fa675f74cf4aa8d24b72dd4807", // Aethoplex production key
+  "27627ea97ee58d929e156ea961c6e255",
+].filter(Boolean) as string[];
+
 const TMDB_PRIMARY = "https://api.tmdb.org/3";
 const TMDB_FALLBACK = "https://api.themoviedb.org/3";
 
 export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
-export function posterUrl(path: string | null | undefined, size: "w200" | "w500" | "original" = "w500"): string {
+export function posterUrl(
+  path: string | null | undefined,
+  size: "w185" | "w200" | "w342" | "w500" | "original" = "w342"
+): string {
   if (!path) return "/placeholder.svg";
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
 
-export function backdropUrl(path: string | null | undefined, size: "w780" | "w1280" | "original" = "w1280"): string {
+export function backdropUrl(
+  path: string | null | undefined,
+  size: "w780" | "w1280" | "original" = "w1280"
+): string {
   if (!path) return "/placeholder.svg";
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
@@ -103,30 +114,32 @@ export interface Video {
 // ── Internal fetch helper with primary/fallback ──────────────────────────────
 
 async function tmdbFetch<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
-  if (!TMDB_API_KEY) {
-    throw new Error("NEXT_PUBLIC_TMDB_API_KEY is not set. Get a free key at https://www.themoviedb.org/settings/api");
-  }
-  const searchParams = new URLSearchParams({
-    api_key: TMDB_API_KEY,
-    language: "en-US",
-    ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
-  });
+  const queryParams = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]));
   let lastError: unknown = null;
+
   for (const base of [TMDB_PRIMARY, TMDB_FALLBACK]) {
-    const url = `${base}${path}?${searchParams.toString()}`;
-    try {
-      const res = await fetch(url, {
-        headers: { accept: "application/json" },
-        next: { revalidate: 1800 }, // cache 30 min on the edge
-        signal: AbortSignal.timeout(3000),
+    for (const key of TMDB_API_KEYS) {
+      const searchParams = new URLSearchParams({
+        api_key: key,
+        language: "en-US",
+        ...queryParams,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status} on ${base}`);
-      return (await res.json()) as T;
-    } catch (err) {
-      lastError = err;
+      const url = `${base}${path}?${searchParams.toString()}`;
+      try {
+        const res = await fetch(url, {
+          headers: { accept: "application/json" },
+          next: { revalidate: 1800 }, // cache 30 min on the edge
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.status === 429) continue; // Rate-limited on this key, try backup key!
+        if (!res.ok) throw new Error(`HTTP ${res.status} on ${base}`);
+        return (await res.json()) as T;
+      } catch (err) {
+        lastError = err;
+      }
     }
   }
-  throw lastError ?? new Error("unreachable");
+  throw lastError ?? new Error("TMDB service is currently unavailable");
 }
 
 // ── Public catalog methods ────────────────────────────────────────────────────

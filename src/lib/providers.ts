@@ -58,6 +58,7 @@ export interface StreamingProvider {
   supports_movie: boolean;
   supports_tv: boolean;
   supports_anime: boolean;
+  sandbox_compatible?: boolean; // false for servers that detect/block iframe sandbox
   build_movie?: (tmdbId: number) => string;
   build_tv?: (tmdbId: number, season: number, episode: number) => string;
   build_anime?: (anilistId: number, malId: number | null, season: number, episode: number) => string;
@@ -73,6 +74,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: true,
     build_movie: (id) => `https://vidlink.pro/movie/${id}`,
     build_tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
   },
@@ -83,6 +85,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false, // Detects sandbox and shows anti-sandbox screen
     build_movie: (id) => `https://vidsrc.pm/embed/movie/${id}`,
     build_tv: (id, s, e) => `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`,
   },
@@ -93,6 +96,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: true,
     build_movie: (id) => `https://tgvid.lovable.app/embed/movie/${id}`,
     build_tv: (id, s, e) => `https://tgvid.lovable.app/embed/tv/${id}/${s}/${e}`,
   },
@@ -103,6 +107,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false, // Requires local cookies & storage
     build_movie: (id) => `https://vidstuck.cc/embed/movie/${id}?color=ffffff`,
     build_tv: (id, s, e) => `https://vidstuck.cc/embed/tv/${id}/${s}/${e}?color=ffffff`,
   },
@@ -113,6 +118,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: true,
     build_movie: (id) => `https://vidfast.vc/movie/${id}?autoPlay=true`,
     build_tv: (id, s, e) => `https://vidfast.vc/tv/${id}/${s}/${e}?autoPlay=true`,
   },
@@ -123,6 +129,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false, // Detects sandbox and shows error
     build_movie: (id) => `https://www.2embed.cc/embed/${id}`,
     build_tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
@@ -133,6 +140,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: true,
     build_movie: (id) => `https://zxcstream.cc/player/movie/${id}`,
     build_tv: (id, s, e) => `https://zxcstream.cc/player/tv/${id}/${s}/${e}`,
   },
@@ -143,6 +151,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: true,
     build_movie: (id) => `https://nxsha.space/embed/movie/${id}`,
     build_tv: (id, s, e) => `https://nxsha.space/embed/tv/${id}/${s}/${e}`,
   },
@@ -153,6 +162,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false, // Cloudflare Turnstile verification fails in sandbox
     build_movie: (id) => `https://bingr.one/watch/movie/${id}`,
     build_tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
   },
@@ -163,6 +173,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false,
     build_movie: (id) => `https://player.autoembed.cc/embed/movie/${id}`,
     build_tv: (id, s, e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
   },
@@ -173,10 +184,21 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
+    sandbox_compatible: false,
     build_movie: (id) => `https://embed.su/embed/movie/${id}`,
     build_tv: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`,
   },
 ];
+
+export function isProviderSandboxCompatible(urlOrLabel: string): boolean {
+  const match = STREAMING_PROVIDERS.find(
+    (p) =>
+      p.label === urlOrLabel ||
+      urlOrLabel.includes(p.base_url.replace("https://", "").replace("http://", ""))
+  );
+  // Default to false for third-party embeds unless explicitly known to tolerate sandboxing
+  return match?.sandbox_compatible ?? false;
+}
 
 // ── Anime providers (AniList or MAL IDs) ─────────────────────────────────────
 
