@@ -10,12 +10,28 @@ interface LiveTVPlayerProps {
 }
 
 export function LiveTVPlayer({ initialChannels }: LiveTVPlayerProps) {
+  const [channels, setChannels] = useState<LiveChannel[]>(initialChannels);
   const [selectedChannel, setSelectedChannel] = useState<LiveChannel | null>(initialChannels[0] || null);
   const [servers, setServers] = useState<LiveChannelServer[]>([]);
   const [activeServer, setActiveServer] = useState<LiveChannelServer | null>(null);
   const [loadingStream, setLoadingStream] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [playerError, setPlayerError] = useState(false);
+
+  // Background fetch full 890+ channels list in the browser if initial list was small
+  useEffect(() => {
+    if (channels.length >= 20) return;
+    fetch("https://livetgtv.lovable.app/api/public/v2/channels")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.channels ?? []);
+        if (list.length > 0) {
+          setChannels(list);
+          if (!selectedChannel) setSelectedChannel(list[0]);
+        }
+      })
+      .catch((e) => console.warn("[LiveTV background fetch error]", e));
+  }, [channels.length, selectedChannel]);
 
   // Fetch direct playable HLS stream for selected channel
   useEffect(() => {
@@ -47,9 +63,10 @@ export function LiveTVPlayer({ initialChannels }: LiveTVPlayerProps) {
     };
   }, [selectedChannel]);
 
-  const filteredChannels = initialChannels.filter((c) =>
+  const filteredChannels = channels.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
 
   return (
     <div className="flex flex-col gap-6">
