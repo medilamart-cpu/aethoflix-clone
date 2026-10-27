@@ -394,6 +394,7 @@ export function VideoPlayer({
             poster={poster}
             autoplay={true}
             controls={true}
+            storageKey={routingKey}
             onError={() => {
               setIframeError(true);
               handleAutoFailover();
@@ -435,18 +436,14 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 4. Anti-Ad Embed Player (Mobile Fullscreen & Anti-Popup Sandbox Enabled) */}
+        {/* 4. Embed Player (Sandbox Removed to Eliminate "Please Disable Sandbox" on Servers 1, 5, 7, etc.) */}
         {url && !isDirectStream && !iframeError && !isTgVidMirror && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}
             title={`${routingTitle} — ${selectedMirror}`}
             className="h-full w-full border-0 bg-black"
-            sandbox={
-              adShieldActive && isProviderSandboxCompatible(selectedMirror || url || "")
-                ? "allow-scripts allow-same-origin allow-forms allow-presentation"
-                : undefined
-            }
+            sandbox={undefined}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
             allowFullScreen={true}
             {...({
@@ -489,11 +486,7 @@ export function VideoPlayer({
               <button
                 type="button"
                 onClick={() => setAdShieldActive(!adShieldActive)}
-                title={
-                  isProviderSandboxCompatible(selectedMirror || url || "")
-                    ? "Sandboxed Mode Active: HTML5 iframe sandbox + Stealth Ad Shield enabled"
-                    : "Stealth Mode Active: Server requires unsandboxed iframe; top-window Stealth Ad Shield is actively intercepting popups"
-                }
+                title="Stealth Mode: Prevents rogue popup storms and redirects in top window without sandbox errors"
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
                   adShieldActive
                     ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25"
@@ -504,7 +497,7 @@ export function VideoPlayer({
                   <>
                     <ShieldCheck className="h-3 w-3 text-indigo-400" />
                     <span>
-                      {isProviderSandboxCompatible(selectedMirror || url || "") ? "Ad Shield (Sandboxed)" : "Ad Shield (Stealth)"}
+                      Ad Shield Active
                       {blockedAdsCount > 0 ? ` (${blockedAdsCount})` : ""}
                     </span>
                   </>
