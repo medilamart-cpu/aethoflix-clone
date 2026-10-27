@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Play, RefreshCw, Loader2, ShieldCheck, ShieldAlert, Zap, Maximize, Minimize, X } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Play, RefreshCw, Loader2, ShieldCheck, ShieldAlert, Zap, Maximize, Minimize, X, Activity } from "lucide-react";
 import { MirrorPicker } from "./MirrorPicker";
 import { WatchGate } from "./WatchGate";
 import { isWatchGateEnabled } from "@/lib/watchgate";
 import { VideoJSPlayer } from "./VideoJSPlayer";
+import { raceCandidateMirrors, getHistoricallyFastest } from "@/lib/serverRacer";
 
 interface VideoPlayerProps {
   routingKey: string; // "movie:1400940"
@@ -27,6 +28,12 @@ export function VideoPlayer({
   const [gateOpen, setGateOpen] = useState(isWatchGateEnabled());
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
   const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(null);
+
+  // Auto-Racer State: Real-time mirror latency & fastest candidate detection
+  const [latencies, setLatencies] = useState<Record<string, number>>({});
+  const [fastestLabel, setFastestLabel] = useState<string | null>(null);
+  const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
+  const userInteractedRef = useRef(false);
 
   // Auto-resolve direct HLS stream (0 ads, 0 popups, 100% native Video.js mobile player)
   // - Movies/TV: resolved from tgvidapi (TG HUB v2 / TG OUT)
@@ -61,6 +68,7 @@ export function VideoPlayer({
             label: type === "anime" ? "⚡ Direct Anime (Video.js)" : "⚡ Direct CDN (Video.js)",
           };
           setDirectStream(directObj);
+          // Direct CDN stream is the absolute highest priority (0 ads, native player)
           setSelectedMirror(directObj.label);
         }
       })
@@ -72,35 +80,93 @@ export function VideoPlayer({
   }, [routingKey]);
 
   // Clean mirrors: If direct stream is active or tgvid is requested, replace ad-infested tgvid.lovable embed iframe
-  const cleanMirrors: Record<string, string> = {};
-  for (const [key, val] of Object.entries(mirrors)) {
-    if (val.includes("tgvid.lovable.app")) {
-      // If direct stream is available, don't show the ad-infested iframe mirror
-      if (!directStream) {
-        cleanMirrors[key] = val;
+  const cleanMirrors: Record<string, string> = useMemo(() => {
+    const res: Record<string, string> = {};
+    for (const [key, val] of Object.entries(mirrors)) {
+      if (val.includes("tgvid.lovable.app")) {
+        // If direct stream is available, don't show the ad-infested iframe mirror
+        if (!directStream) {
+          res[key] = val;
+        }
+      } else {
+        res[key] = val;
       }
-    } else {
-      cleanMirrors[key] = val;
     }
-  }
+    return res;
+  }, [mirrors, directStream]);
 
   // Combine direct stream with mirror options (Direct CDN placed first)
-  const allMirrors: Record<string, string> = directStream
-    ? { [directStream.label]: directStream.url, ...cleanMirrors }
-    : cleanMirrors;
-  const mirrorKeys = Object.keys(allMirrors);
-  const [selectedMirror, setSelectedMirror] = useState<string | null>(mirrorKeys[0] || null);
+  const allMirrors: Record<string, string> = useMemo(() => {
+    return directStream
+      ? { [directStream.label]: directStream.url, ...cleanMirrors }
+      : cleanMirrors;
+  }, [directStream, cleanMirrors]);
+
+  const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
+  const [selectedMirror, setSelectedMirror] = useState<string | null>(null);
   const [iframeError, setIframeError] = useState(false);
   const [adShieldActive, setAdShieldActive] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Initialize selected mirror with historically fastest or first mirror
   useEffect(() => {
-    const keys = Object.keys(allMirrors);
-    if (keys.length > 0 && (!selectedMirror || !allMirrors[selectedMirror])) {
-      setSelectedMirror(keys[0]);
+    if (selectedMirror && allMirrors[selectedMirror]) return;
+    if (directStream) {
+      setSelectedMirror(directStream.label);
+      return;
     }
+    const historical = getHistoricallyFastest(cleanMirrors);
+    if (historical && allMirrors[historical]) {
+      setSelectedMirror(historical);
+    } else if (mirrorKeys.length > 0) {
+      setSelectedMirror(mirrorKeys[0]);
+    }
+  }, [allMirrors, cleanMirrors, directStream, mirrorKeys, selectedMirror]);
+
+  // Real-time Fastest Server Auto-Racer:
+  // Concurrently probes candidate servers to pick the fastest responding server from the user's location
+  useEffect(() => {
+    if (Object.keys(cleanMirrors).length === 0) return;
+
+    const cancel = raceCandidateMirrors(cleanMirrors, {
+      onFirstWinner: (label, latency) => {
+        setFastestLabel(label);
+        // Only auto-switch to first responder if direct stream isn't active and user hasn't chosen manually
+        if (!directStream && !userInteractedRef.current) {
+          setSelectedMirror(label);
+          setAutoSwitchNotice(`⚡ Auto-selected fastest server: ${label} (${latency}ms)`);
+          setTimeout(() => setAutoSwitchNotice(null), 3500);
+        }
+      },
+      onUpdate: (updatedLatencies, fastest) => {
+        setLatencies({ ...updatedLatencies });
+        if (fastest) setFastestLabel(fastest);
+      },
+    });
+
+    return () => {
+      cancel();
+    };
+  }, [cleanMirrors, directStream]);
+
+  // Auto-failover: If current server fails, immediately promote the next fastest responding mirror
+  const handleAutoFailover = useCallback(() => {
+    const candidates = mirrorKeys.filter((k) => k !== selectedMirror);
+    if (candidates.length === 0) return;
+
+    // Rank candidates by measured ping response time
+    const sorted = [...candidates].sort((a, b) => {
+      const latA = latencies[a] ?? 9999;
+      const latB = latencies[b] ?? 9999;
+      return latA - latB;
+    });
+
+    const nextFastest = sorted[0];
+    setAutoSwitchNotice(`⚡ Server was unresponsive. Auto-switched to fastest backup: ${nextFastest}!`);
+    setTimeout(() => setAutoSwitchNotice(null), 4000);
+    setSelectedMirror(nextFastest);
     setIframeError(false);
-  }, [routingKey, allMirrors, selectedMirror]);
+  }, [mirrorKeys, selectedMirror, latencies]);
 
   const [blockedAdsCount, setBlockedAdsCount] = useState(0);
 
@@ -311,6 +377,14 @@ export function VideoPlayer({
           </div>
         )}
 
+        {/* Auto-Switch Notice Toast */}
+        {autoSwitchNotice && (
+          <div className="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg bg-indigo-600/90 backdrop-blur-md border border-indigo-400/40 px-3 py-1.5 text-xs text-white shadow-xl animate-in fade-in slide-in-from-top-2">
+            <Zap className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+            <span>{autoSwitchNotice}</span>
+          </div>
+        )}
+
         {/* 1. Direct CDN Player with Video.js (0 ads, 0 popups, 100% mobile fullscreen) */}
         {url && isDirectStream && (
           <VideoJSPlayer
@@ -319,7 +393,10 @@ export function VideoPlayer({
             poster={poster}
             autoplay={true}
             controls={true}
-            onError={() => setIframeError(true)}
+            onError={() => {
+              setIframeError(true);
+              handleAutoFailover();
+            }}
           />
         )}
 
@@ -334,27 +411,23 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 3. Error Fallback State */}
+        {/* 3. Error Fallback State with Auto-Failover to Fastest Server */}
         {url && iframeError && (
           <div className="flex h-full w-full items-center justify-center bg-black">
             <div className="text-center px-6">
               <p className="text-sm text-red-400">This server couldn&apos;t load or is blocked in your area.</p>
               <div className="mt-3 flex items-center justify-center gap-2">
                 <button
+                  onClick={handleAutoFailover}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-500 transition-all cursor-pointer font-medium shadow-md shadow-amber-600/20"
+                >
+                  <Zap className="h-3.5 w-3.5" /> Jump to Fastest Server
+                </button>
+                <button
                   onClick={handleReload}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20 transition-all cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Retry Current
-                </button>
-                <button
-                  onClick={() => {
-                    const nextIdx = (mirrorKeys.indexOf(selectedMirror || "") + 1) % mirrorKeys.length;
-                    setSelectedMirror(mirrorKeys[nextIdx]);
-                    setIframeError(false);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-500 transition-all cursor-pointer"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> Next Server
                 </button>
               </div>
             </div>
@@ -382,7 +455,10 @@ export function VideoPlayer({
               "webkit-playsinline": "true",
             } as any)}
             referrerPolicy="origin"
-            onError={() => setIframeError(true)}
+            onError={() => {
+              setIframeError(true);
+              handleAutoFailover();
+            }}
           />
         )}
       </div>
@@ -393,7 +469,10 @@ export function VideoPlayer({
           <MirrorPicker
             mirrors={allMirrors}
             selected={selectedMirror}
+            latencies={latencies}
+            fastestLabel={fastestLabel}
             onSelect={(label) => {
+              userInteractedRef.current = true;
               setSelectedMirror(label);
               setIframeError(false);
             }}
@@ -462,13 +541,21 @@ export function VideoPlayer({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-neutral-500">
-          <Loader2 className="h-3 w-3" />
-          <span>
-            {isDirectStream
-              ? "Streaming ad-free directly via high-speed CDN in native Video.js."
-              : "Unsandboxed player enabled with Stealth Ad Shield. Switch servers if any mirror takes too long to load."}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-3 w-3" />
+            <span>
+              {isDirectStream
+                ? "Streaming ad-free directly via high-speed CDN in native Video.js."
+                : "Unsandboxed player enabled with Stealth Ad Shield & Auto-Racer."}
+            </span>
+          </div>
+          {fastestLabel && latencies[fastestLabel] && (
+            <div className="flex items-center gap-1 font-medium text-emerald-400">
+              <Zap className="h-3 w-3" />
+              <span>Fastest: {fastestLabel} ({latencies[fastestLabel]}ms)</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
