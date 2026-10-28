@@ -332,3 +332,36 @@ export function animeStreamUrls(
   }
   return urls;
 }
+
+export const KNOWN_ANIME_MAP: Record<number, { anilistId: number; malId: number }> = {
+  37854: { anilistId: 21, malId: 21 }, // One Piece
+  85937: { anilistId: 101922, malId: 38000 }, // Demon Slayer (Kimetsu no Yaiba)
+  1429: { anilistId: 16498, malId: 16498 }, // Attack on Titan
+  1399: { anilistId: 16498, malId: 16498 }, // Attack on Titan (alt)
+  46260: { anilistId: 20, malId: 20 }, // Naruto
+  1735: { anilistId: 269, malId: 269 }, // Bleach
+  13916: { anilistId: 1535, malId: 1535 }, // Death Note
+  88040: { anilistId: 113415, malId: 40748 }, // Jujutsu Kaisen
+  45782: { anilistId: 11757, malId: 11757 }, // Sword Art Online
+  65930: { anilistId: 21459, malId: 31964 }, // My Hero Academia
+  61374: { anilistId: 20605, malId: 22319 }, // Tokyo Ghoul
+  46298: { anilistId: 11061, malId: 11061 }, // Hunter x Hunter
+  126963: { anilistId: 127230, malId: 44511 }, // Chainsaw Man
+  209867: { anilistId: 154587, malId: 52991 }, // Frieren
+  114410: { anilistId: 124080, malId: 43608 }, // Oshi no Ko
+  99966: { anilistId: 120377, malId: 42203 }, // Solo Leveling
+  215070: { anilistId: 163134, malId: 54900 }, // Dandadan
+  80752: { anilistId: 105333, malId: 39535 }, // Dr. STONE
+  65817: { anilistId: 21507, malId: 32182 }, // Mob Psycho 100
+  95479: { anilistId: 101921, malId: 37779 }, // The Promised Neverland
+  74313: { anilistId: 21827, malId: 33486 }, // Black Clover
+  120089: { anilistId: 140960, malId: 50265 }, // Spy x Family
+  135897: { anilistId: 137822, malId: 47887 }, // Blue Lock
+  12971: { anilistId: 813, malId: 813 }, // Dragon Ball Z
+  62715: { anilistId: 21175, malId: 30694 }, // Dragon Ball Super
+};
+
+export function getKnownAnimeMatch(tmdbId: number): { anilistId: number; malId: number } | null {
+  return KNOWN_ANIME_MAP[tmdbId] || null;
+}
+

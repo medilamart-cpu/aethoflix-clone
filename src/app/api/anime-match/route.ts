@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tmdbFetch, type TVDetail } from "@/lib/tmdb";
+import { getKnownAnimeMatch } from "@/lib/providers";
 
 export const runtime = "edge";
 
@@ -14,6 +15,17 @@ export async function GET(req: NextRequest) {
       const idNum = Number(tmdbId);
       const tv = await tmdbFetch<TVDetail>(`/tv/${idNum}`);
       const searchTitle = tv.name || "";
+
+      // Check known anime map first for instant zero-latency match
+      const known = getKnownAnimeMatch(idNum);
+      if (known) {
+        return NextResponse.json({
+          ok: true,
+          tv,
+          anilistId: known.anilistId,
+          malId: known.malId,
+        });
+      }
 
       // Query AniList
       let anilistMatch = null;

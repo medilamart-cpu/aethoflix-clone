@@ -27,7 +27,11 @@ export interface AnimeMedia {
 async function anilistQuery<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(ANILIST_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    },
     body: JSON.stringify({ query, variables }),
     next: { revalidate: 1800 },
   });

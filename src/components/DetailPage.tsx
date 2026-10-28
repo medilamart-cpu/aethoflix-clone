@@ -8,7 +8,7 @@ import { VideoPlayer } from "./VideoPlayer";
 import { MediaRow } from "./MediaRow";
 import { posterUrl, backdropUrl } from "@/lib/tmdb";
 import type { MovieDetail, TVDetail } from "@/lib/tmdb";
-import { movieStreamUrls, tvStreamUrls } from "@/lib/providers";
+import { movieStreamUrls, tvStreamUrls, getKnownAnimeMatch } from "@/lib/providers";
 import { AethoAnimePlayer, type AnimeSeasonItem } from "./AethoAnimePlayer";
 
 const AD_PARTNER_URL_1 = process.env.AD_PARTNER_URL_1 ?? "";
@@ -113,10 +113,12 @@ export function TVDetailPage({ tv }: TVDetailPageProps) {
     tv.original_language === "ja" ||
     tv.genres?.some((g) => g.name.toLowerCase() === "animation");
 
-  const [animeMatch, setAnimeMatch] = useState<{ anilistId: number; malId: number | null } | null>(null);
+  const [animeMatch, setAnimeMatch] = useState<{ anilistId: number; malId: number | null } | null>(() => {
+    return getKnownAnimeMatch(tv.id);
+  });
 
   useEffect(() => {
-    if (!isPotentialAnime) return;
+    if (!isPotentialAnime || animeMatch?.anilistId) return;
     fetch(`/api/anime-match?tmdbId=${tv.id}`)
       .then((r) => r.json())
       .then((d) => {
@@ -125,7 +127,7 @@ export function TVDetailPage({ tv }: TVDetailPageProps) {
         }
       })
       .catch(() => {});
-  }, [tv.id, isPotentialAnime]);
+  }, [tv.id, isPotentialAnime, animeMatch?.anilistId]);
 
   const [season, setSeason] = useState<number>(tv.seasons.find((s) => s.season_number > 0)?.season_number ?? 1);
   const [episode, setEpisode] = useState<number>(1);
