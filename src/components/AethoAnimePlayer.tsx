@@ -16,8 +16,10 @@ import {
   Share2,
   X,
   ExternalLink,
+  Zap,
 } from "lucide-react";
 import { getAnimeServers, type AnimeServerOption } from "@/lib/providers";
+import { VideoJSPlayer } from "./VideoJSPlayer";
 
 export interface AnimeEpisodeItem {
   id: number;
@@ -73,6 +75,33 @@ export function AethoAnimePlayer({
   const [showSourcesInfo, setShowSourcesInfo] = useState<boolean>(false);
   const [showDownloadDialog, setShowDownloadDialog] = useState<boolean>(false);
   const [shareToast, setShareToast] = useState<string>("");
+
+  // Direct HLS CDN stream via Video.js
+  const [directHlsUrl, setDirectHlsUrl] = useState<string | null>(null);
+  const [resolvingDirect, setResolvingDirect] = useState<boolean>(false);
+
+  // Auto-resolve direct HLS whenever episode or audio changes
+  useEffect(() => {
+    let cancelled = false;
+    setResolvingDirect(true);
+    setDirectHlsUrl(null);
+
+    fetch(`/api/resolve-anime?id=${anilistId}&e=${selectedEpisode}&sub=${subOrDub}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data.ok && data.playable) {
+          setDirectHlsUrl(data.playable);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setResolvingDirect(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [anilistId, selectedEpisode, subOrDub]);
 
   // Season episodes state
   const [currentEpisodes, setCurrentEpisodes] = useState<AnimeEpisodeItem[]>(initialEpisodes);
@@ -181,7 +210,35 @@ export function AethoAnimePlayer({
         <section className="watch-main">
           {/* 16:9 Video Player Screen */}
           <div className="watch-screen">
-            {activeServer?.url ? (
+            {serverId === "videojs" ? (
+              directHlsUrl ? (
+                <VideoJSPlayer
+                  key={`videojs-${selectedEpisode}-${subOrDub}`}
+                  src={directHlsUrl}
+                  type="application/x-mpegURL"
+                  poster={backdropPath ? `https://image.tmdb.org/t/p/w1280${backdropPath}` : undefined}
+                  storageKey={`anime:${anilistId}:${selectedEpisode}`}
+                  className="h-full w-full"
+                />
+              ) : resolvingDirect ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black/90 p-4 text-center">
+                  <Zap className="h-8 w-8 animate-pulse text-sky-400" />
+                  <span className="text-sm font-semibold text-white">Connecting to Direct CDN (Video.js)...</span>
+                  <span className="text-xs text-neutral-400">Resolving high-speed 1080p HLS stream</span>
+                </div>
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center">
+                  <span className="text-sm text-neutral-300">Direct CDN not available for this episode.</span>
+                  <button
+                    type="button"
+                    onClick={() => setServerId(servers[0]?.id || "megaplay")}
+                    className="rounded-lg bg-sky-500/20 border border-sky-400/30 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-500/30"
+                  >
+                    Switch to Server 1 (MegaPlay)
+                  </button>
+                </div>
+              )
+            ) : activeServer?.url ? (
               <iframe
                 key={`${activeServer.id}-${selectedSeason}-${selectedEpisode}-${subOrDub}`}
                 src={activeServer.url}
@@ -199,13 +256,14 @@ export function AethoAnimePlayer({
             {/* Corner Badge */}
             <div className="screen-corner-label">
               <span className="screen-dot" />
-              <span>AETHOFLIX PLAYER</span>
+              <span>{serverId === "videojs" ? "AETHOFLIX VIDEO.JS" : "AETHOFLIX PLAYER"}</span>
             </div>
           </div>
 
-          {/* Title bar & Actions */}
-          <div className="watch-titlebar">
-            <div>
+          {/* Title bar & Actions matching screenshot */}
+          <div className="watch-meta-block">
+            {/* Row 1: Overline + Next Episode & Play in Theatre */}
+            <div className="watch-meta-row1">
               <div className="section-overline">
                 <span>ANIME PLAYER</span>
                 <button
@@ -214,85 +272,97 @@ export function AethoAnimePlayer({
                   className="server-badge"
                   title="Click to change server"
                 >
-                  SERVER {activeServer.serverNumber}
+                  {serverId === "videojs" ? "⚡ DIRECT (VIDEO.JS)" : `SERVER ${activeServer.serverNumber}`}
                 </button>
               </div>
 
-              <h1>
-                {title}
+              <div className="watch-row1-actions">
+                <button
+                  type="button"
+                  disabled={!hasNextEpisode}
+                  onClick={() => nextEpisodeNumber && setSelectedEpisode(nextEpisodeNumber)}
+                  className="next-episode-action"
+                >
+                  <span>Next episode</span>
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </button>
+
+                <a
+                  href={theatreUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="theatre-action"
+                >
+                  <Film className="h-3.5 w-3.5 text-blue-300" />
+                  <span>Play in Theatre</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Row 2: Clean Series Title & Utility Actions */}
+            <div className="watch-meta-row2">
+              <div className="min-w-0">
+                <h1>{title}</h1>
                 {currentEpisodeDetails?.name && (
-                  <span className="watch-episode-title"> / {currentEpisodeDetails.name}</span>
+                  <p className="watch-episode-subtitle">
+                    Episode {selectedEpisode}: {currentEpisodeDetails.name}
+                  </p>
                 )}
-              </h1>
+              </div>
+
+              <div className="watch-row2-actions">
+                <button
+                  type="button"
+                  onClick={() => setShowDownloadDialog(true)}
+                  className="icon-action-btn"
+                  title="Download options"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="icon-action-btn"
+                  title="Share link"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            {/* Action buttons */}
-            <div className="watch-title-actions">
-              <button
-                type="button"
-                disabled={!hasNextEpisode}
-                onClick={() => nextEpisodeNumber && setSelectedEpisode(nextEpisodeNumber)}
-                className="next-episode-action"
-              >
-                <span>Next episode</span>
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
+            {/* Share toast notification */}
+            {shareToast && (
+              <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-lg border border-cyan-500/30 bg-cyan-950/60 px-3 py-1.5 text-xs text-cyan-200">
+                <Check className="h-3.5 w-3.5 text-cyan-400" /> {shareToast}
+              </div>
+            )}
 
-              <a
-                href={theatreUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="theatre-action"
-              >
-                <Film className="h-3.5 w-3.5 text-blue-300" />
-                <span>Play in Theatre</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={() => setShowDownloadDialog(true)}
-                className="download-action"
-                title="Download options"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleShare}
-                className="watch-external"
-                title="Share link"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {/* Overview synopsis */}
+            {overview && (
+              <p className="watch-description leading-relaxed">
+                {overview.replace(/<[^>]*>?/gm, "")}
+              </p>
+            )}
           </div>
-
-          {/* Share toast notification */}
-          {shareToast && (
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-950/60 px-3 py-1.5 text-xs text-cyan-200">
-              <Check className="h-3.5 w-3.5 text-cyan-400" /> {shareToast}
-            </div>
-          )}
-
-          {/* Overview synopsis */}
-          {overview && (
-            <p className="watch-description leading-relaxed">
-              {overview.replace(/<[^>]*>?/gm, "")}
-            </p>
-          )}
 
           {/* ── Episodes Section ("UP NEXT, ON YOUR TERMS") ── */}
           <div className="player-episodes">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
+            <div className="episodes-header-block">
+              <div className="episodes-header-row1">
                 <span className="section-overline">UP NEXT, ON YOUR TERMS</span>
-                <div className="episode-heading mt-1">
-                  <h2>Episodes</h2>
+                {/* Live counter badge */}
+                <div className="live-pill-badge">
+                  <span className="live-pill-dot" />
+                  <span>{liveCount} live</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="episodes-header-row2">
+                <div className="episode-heading">
+                  <h2>Episodes</h2>
+                </div>
+
                 {/* Arc / Season Dropdown */}
                 {seasons.length > 0 && (
                   <div className="season-select-wrap">
@@ -309,12 +379,6 @@ export function AethoAnimePlayer({
                     <ChevronDown className="h-3.5 w-3.5 text-neutral-400" />
                   </div>
                 )}
-
-                {/* Live counter badge */}
-                <div className="live-pill-badge">
-                  <span className="live-pill-dot" />
-                  <span>{liveCount} live</span>
-                </div>
               </div>
             </div>
 
@@ -413,10 +477,34 @@ export function AethoAnimePlayer({
               </button>
             </div>
 
-            {/* 2x2 Server Grid */}
+            {/* Server Grid: Video.js Direct + Embed Mirrors */}
             <div className="server-list">
+              {/* Premier Option: Direct CDN Video.js */}
+              <button
+                type="button"
+                onClick={() => setServerId("videojs")}
+                className={`server-option col-span-2 ${serverId === "videojs" ? "server-active" : ""}`}
+                aria-pressed={serverId === "videojs"}
+              >
+                <span className="server-number flex items-center justify-center text-amber-300">
+                  <Zap className="h-3.5 w-3.5" />
+                </span>
+                <span className="server-name">
+                  <span className="flex items-center gap-1.5">
+                    <span>Direct CDN</span>
+                    <span className="rounded bg-sky-500/20 px-1 py-0.5 text-[7.5px] font-bold text-sky-300">Video.js</span>
+                  </span>
+                  <small>{serverId === "videojs" ? "Now streaming ad-free" : directHlsUrl ? "Ad-Free • Ready" : resolvingDirect ? "Resolving stream..." : "High-speed HLS"}</small>
+                </span>
+                {serverId === "videojs" ? (
+                  <Check className="h-4 w-4 text-cyan-300 ml-auto" />
+                ) : (
+                  <ArrowUpRight className="h-3.5 w-3.5 text-neutral-400 ml-auto" />
+                )}
+              </button>
+
               {servers.map((s) => {
-                const isActive = s.id === activeServer.id;
+                const isActive = serverId === s.id;
                 return (
                   <button
                     key={s.id}
