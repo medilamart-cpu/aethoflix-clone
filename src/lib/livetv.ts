@@ -1,76 +1,100 @@
 /**
- * LiveTVGT — public live TV channel guide (899 channels).
+ * LiveTVGT — public live TV channel guide.
  *
- * This is the same endpoint AethoFlix uses. It's hosted on Lovable.
- * If you want to build your own live TV backend, replace this URL with
- * your own channel-list endpoint and update the LiveChannel type to match.
+ * Aethoplex / Aethoflix uses two directories:
+ * - V1: India channels (1,216+ channels including Colors, Star, Zee, Sony, Aaj Tak, DD Sports, etc.)
+ * - V2: 24 / 7 mix (Global channels like HBO, CNN, ESPN, Discovery, etc.)
  */
-
-const LIVETV_ENDPOINT = process.env.NEXT_PUBLIC_LIVETV_ENDPOINT ?? "https://livetgtv.lovable.app/api/public/v2/channels";
 
 export interface LiveChannel {
   id: string;
   name: string;
-  stream: string; // detail endpoint (returns the servers[] array)
-  watch: string; // watch page on livetgtv.lovable.app
-  embed: string; // embed URL for the player iframe
+  category?: string;
+  logo?: string;
+  stream?: string;
+  watch?: string;
+  embed?: string;
 }
 
 export interface LiveChannelServer {
   key: string;
   label: string;
-  playable: string; // HLS URL (proxied through livetgtv)
+  playable: string;
   type: "hls" | "mp4";
 }
 
-const POPULAR_FALLBACK_CHANNELS: LiveChannel[] = [
-  { id: "1", name: "ESPN HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/1", watch: "https://livetgtv.lovable.app/watch/1", embed: "https://livetgtv.lovable.app/embed/1" },
-  { id: "2", name: "HBO East HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/2", watch: "https://livetgtv.lovable.app/watch/2", embed: "https://livetgtv.lovable.app/embed/2" },
-  { id: "3", name: "CNN US HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/3", watch: "https://livetgtv.lovable.app/watch/3", embed: "https://livetgtv.lovable.app/embed/3" },
-  { id: "4", name: "Discovery Channel", stream: "https://livetgtv.lovable.app/api/public/v2/channels/4", watch: "https://livetgtv.lovable.app/watch/4", embed: "https://livetgtv.lovable.app/embed/4" },
-  { id: "5", name: "Cartoon Network HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/5", watch: "https://livetgtv.lovable.app/watch/5", embed: "https://livetgtv.lovable.app/embed/5" },
-  { id: "6", name: "BBC News HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/6", watch: "https://livetgtv.lovable.app/watch/6", embed: "https://livetgtv.lovable.app/embed/6" },
-  { id: "7", name: "National Geographic HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/7", watch: "https://livetgtv.lovable.app/watch/7", embed: "https://livetgtv.lovable.app/embed/7" },
-  { id: "8", name: "Fox Sports 1 HD", stream: "https://livetgtv.lovable.app/api/public/v2/channels/8", watch: "https://livetgtv.lovable.app/watch/8", embed: "https://livetgtv.lovable.app/embed/8" },
+export const POPULAR_INDIAN_FALLBACK_CHANNELS: LiveChannel[] = [
+  { id: "144", name: "Colors HD", category: "Entertainment", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/ColorsHD.png", embed: "https://livetgtv.lovable.app/embed/144" },
+  { id: "156", name: "Star Gold HD", category: "Movies", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/Star_Gold_HD.png", embed: "https://livetgtv.lovable.app/embed/156" },
+  { id: "165", name: "Zee Cinema HD", category: "Movies", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/Zee_Cinema_HD.png", embed: "https://livetgtv.lovable.app/embed/165" },
+  { id: "167", name: "Zee TV HD", category: "Entertainment", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/Zee_TV_HD.png", embed: "https://livetgtv.lovable.app/embed/167" },
+  { id: "173", name: "Aaj Tak", category: "News", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/Aaj_Tak.png", embed: "https://livetgtv.lovable.app/embed/173" },
+  { id: "204", name: "DD Sports", category: "Sports", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/DD_Sports.png", embed: "https://livetgtv.lovable.app/embed/204" },
+  { id: "185", name: "And Pictures HD", category: "Movies", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/And_Pictures_HD.png", embed: "https://livetgtv.lovable.app/embed/185" },
+  { id: "183", name: "B4U Music", category: "Music", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/B4U_Music.png", embed: "https://livetgtv.lovable.app/embed/183" },
+  { id: "202", name: "DD National", category: "Entertainment", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/DD_National.png", embed: "https://livetgtv.lovable.app/embed/202" },
+  { id: "190", name: "CNBC Awaaz", category: "Business News", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/CNBC_Awaaz.png", embed: "https://livetgtv.lovable.app/embed/190" },
+  { id: "177", name: "ABP News India", category: "News", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/ABP_News.png", embed: "https://livetgtv.lovable.app/embed/177" },
+  { id: "146", name: "History TV18 HD", category: "Infotainment", logo: "https://jiotv.catchup.cdn.jio.com/dare_images/images/History_TV18_HD.png", embed: "https://livetgtv.lovable.app/embed/146" },
 ];
 
-export async function liveChannels(): Promise<LiveChannel[]> {
+export const POPULAR_GLOBAL_FALLBACK_CHANNELS: LiveChannel[] = [
+  { id: "1", name: "ESPN HD", category: "Sports", embed: "https://livetgtv.lovable.app/v2/embed/1" },
+  { id: "2", name: "HBO East HD", category: "Movies", embed: "https://livetgtv.lovable.app/v2/embed/2" },
+  { id: "3", name: "CNN US HD", category: "News", embed: "https://livetgtv.lovable.app/v2/embed/3" },
+  { id: "4", name: "Discovery Channel", category: "Documentary", embed: "https://livetgtv.lovable.app/v2/embed/4" },
+  { id: "5", name: "Cartoon Network HD", category: "Kids", embed: "https://livetgtv.lovable.app/v2/embed/5" },
+  { id: "6", name: "BBC News HD", category: "News", embed: "https://livetgtv.lovable.app/v2/embed/6" },
+  { id: "7", name: "National Geographic HD", category: "Documentary", embed: "https://livetgtv.lovable.app/v2/embed/7" },
+  { id: "8", name: "Fox Sports 1 HD", category: "Sports", embed: "https://livetgtv.lovable.app/v2/embed/8" },
+];
+
+export async function liveChannels(version: "v1" | "v2" = "v1"): Promise<LiveChannel[]> {
+  const endpoint =
+    version === "v1"
+      ? "https://livetgtv.lovable.app/api/public/channels"
+      : "https://livetgtv.lovable.app/api/public/v2/channels";
+
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch(LIVETV_ENDPOINT, {
-      headers: { accept: "application/json" },
+    const res = await fetch(endpoint, {
+      headers: { accept: "application/json", "User-Agent": "Mozilla/5.0" },
       signal: controller.signal,
-      next: { revalidate: 3600 },
+      next: { revalidate: 1800 },
     });
     clearTimeout(timer);
 
     if (!res.ok) throw new Error(`LiveTV HTTP ${res.status}`);
     const data = await res.json();
     const channels = Array.isArray(data) ? data : (data.channels ?? []);
-    return channels.length > 0 ? (channels as LiveChannel[]) : POPULAR_FALLBACK_CHANNELS;
+
+    if (channels.length > 0) {
+      return channels.map((c: any) => ({
+        id: String(c.id),
+        name: c.name,
+        category: c.category || (version === "v1" ? "Indian TV" : "24 / 7"),
+        logo: c.logo || undefined,
+        embed:
+          c.embed ||
+          (version === "v1"
+            ? `https://livetgtv.lovable.app/embed/${c.id}?colour=FFFFFF`
+            : `https://livetgtv.lovable.app/v2/embed/${c.id}?colour=FFFFFF`),
+        stream: c.stream || undefined,
+        watch: c.watch || undefined,
+      }));
+    }
+
+    return version === "v1" ? POPULAR_INDIAN_FALLBACK_CHANNELS : POPULAR_GLOBAL_FALLBACK_CHANNELS;
   } catch (err) {
-    console.warn("[LiveTV] Falling back to curated channels:", err);
-    return POPULAR_FALLBACK_CHANNELS;
+    console.warn(`[LiveTV] Fetch error for ${version}, using fallback:`, err);
+    return version === "v1" ? POPULAR_INDIAN_FALLBACK_CHANNELS : POPULAR_GLOBAL_FALLBACK_CHANNELS;
   }
 }
 
-export async function liveChannelDetail(channelId: string | number): Promise<{ servers: LiveChannelServer[] }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
-  try {
-    const res = await fetch(`https://livetgtv.lovable.app/api/public/v2/channels/${channelId}`, {
-      headers: { accept: "application/json" },
-      signal: controller.signal,
-      next: { revalidate: 600 },
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`LiveTV channel ${channelId} HTTP ${res.status}`);
-    return res.json();
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
+export function getLiveEmbedUrl(channelId: string | number, version: "v1" | "v2" = "v1"): string {
+  return version === "v1"
+    ? `https://livetgtv.lovable.app/embed/${channelId}?colour=FFFFFF`
+    : `https://livetgtv.lovable.app/v2/embed/${channelId}?colour=FFFFFF`;
 }
-

@@ -202,36 +202,89 @@ export function isProviderSandboxCompatible(urlOrLabel: string): boolean {
 
 // ── Anime providers (AniList or MAL IDs) ─────────────────────────────────────
 
+export interface AnimeServerOption {
+  id: string;
+  name: string;
+  serverNumber: number;
+  url: string;
+}
+
+export function getAnimeServers(
+  anilistId: number,
+  episode: number,
+  subOrDub: "sub" | "dub" = "sub",
+  malId: number | null = null,
+): AnimeServerOption[] {
+  const malUrl = malId
+    ? `https://zokoanime.video/stream/mal/${malId}/${episode}/${subOrDub}?color=ffffff`
+    : `https://zokoanime.video/stream/anilist/${anilistId}/${episode}/${subOrDub}?color=ffffff`;
+
+  return [
+    {
+      id: "megaplay",
+      name: "MegaPlay",
+      serverNumber: 1,
+      url: `https://megaplay.buzz/stream/ani/${anilistId}/${episode}/${subOrDub}`,
+    },
+    {
+      id: "recloud-1",
+      name: "ReCloud HD 1",
+      serverNumber: 2,
+      url: `https://cdn.4animo.xyz/embed/hd-1/ani/${anilistId}/${episode}/${subOrDub}?k=1`,
+    },
+    {
+      id: "recloud-2",
+      name: "ReCloud HD 2",
+      serverNumber: 3,
+      url: `https://cdn.4animo.xyz/embed/hd-2/ani/${anilistId}/${episode}/${subOrDub}?k=1`,
+    },
+    {
+      id: "zokoanime",
+      name: "Zokoanime",
+      serverNumber: 4,
+      url: malUrl,
+    },
+  ];
+}
+
 export const ANIME_STREAMING_PROVIDERS: StreamingProvider[] = [
   {
-    label: "Server A1",
+    label: "Server 1",
     provider: "MegaPlay",
     base_url: "https://megaplay.buzz",
     supports_movie: false,
     supports_tv: false,
     supports_anime: true,
-    build_anime: (aid, _mal, s, e) => `https://megaplay.buzz/stream/ani/${aid}/${s}/${e}`,
+    build_anime: (aid, _mal, _s, e) => `https://megaplay.buzz/stream/ani/${aid}/${e}/sub`,
   },
   {
-    label: "Server A2",
-    provider: "ReCloud",
+    label: "Server 2",
+    provider: "ReCloud HD 1",
     base_url: "https://cdn.4animo.xyz",
     supports_movie: false,
     supports_tv: false,
     supports_anime: true,
-    build_anime: (aid, _mal, s, e) => `https://cdn.4animo.xyz/embed/hd-1/ani/${aid}/${s}/${e}?k=1`,
+    build_anime: (aid, _mal, _s, e) => `https://cdn.4animo.xyz/embed/hd-1/ani/${aid}/${e}/sub?k=1`,
   },
   {
-    label: "Server A3",
+    label: "Server 3",
+    provider: "ReCloud HD 2",
+    base_url: "https://cdn.4animo.xyz",
+    supports_movie: false,
+    supports_tv: false,
+    supports_anime: true,
+    build_anime: (aid, _mal, _s, e) => `https://cdn.4animo.xyz/embed/hd-2/ani/${aid}/${e}/sub?k=1`,
+  },
+  {
+    label: "Server 4",
     provider: "Zokoanime",
     base_url: "https://zokoanime.video",
     supports_movie: false,
     supports_tv: false,
     supports_anime: true,
-    // Zokoanime prefers MAL ID when available, falls back to AniList
-    build_anime: (aid, mal, s, e) => mal
-      ? `https://zokoanime.video/stream/mal/${mal}/${s}/${e}?color=ffffff`
-      : `https://zokoanime.video/stream/anilist/${aid}/${s}/${e}?color=ffffff`,
+    build_anime: (aid, mal, _s, e) => mal
+      ? `https://zokoanime.video/stream/mal/${mal}/${e}/sub?color=ffffff`
+      : `https://zokoanime.video/stream/anilist/${aid}/${e}/sub?color=ffffff`,
   },
 ];
 
@@ -270,16 +323,12 @@ export function animeStreamUrls(
   season: number,
   episode: number,
   malId: number | null = null,
+  subOrDub: "sub" | "dub" = "sub",
 ): Record<string, string> {
+  const servers = getAnimeServers(anilistId, episode, subOrDub, malId);
   const urls: Record<string, string> = {};
-  for (const prov of ANIME_STREAMING_PROVIDERS) {
-    if (prov.build_anime) {
-      try {
-        urls[prov.label] = prov.build_anime(anilistId, malId, season, episode);
-      } catch {
-        urls[prov.label] = "[unavailable]";
-      }
-    }
+  for (const s of servers) {
+    urls[`Server ${s.serverNumber}`] = s.url;
   }
   return urls;
 }

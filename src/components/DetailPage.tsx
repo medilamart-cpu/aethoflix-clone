@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, Star, Play } from "lucide-react";
@@ -9,6 +9,7 @@ import { MediaRow } from "./MediaRow";
 import { posterUrl, backdropUrl } from "@/lib/tmdb";
 import type { MovieDetail, TVDetail } from "@/lib/tmdb";
 import { movieStreamUrls, tvStreamUrls } from "@/lib/providers";
+import { AethoAnimePlayer, type AnimeSeasonItem } from "./AethoAnimePlayer";
 
 const AD_PARTNER_URL_1 = process.env.AD_PARTNER_URL_1 ?? "";
 const AD_PARTNER_URL_2 = process.env.AD_PARTNER_URL_2 ?? "";
@@ -108,10 +109,59 @@ interface TVDetailPageProps {
 }
 
 export function TVDetailPage({ tv }: TVDetailPageProps) {
+  const isPotentialAnime =
+    tv.original_language === "ja" ||
+    tv.genres?.some((g) => g.name.toLowerCase() === "animation");
+
+  const [animeMatch, setAnimeMatch] = useState<{ anilistId: number; malId: number | null } | null>(null);
+
+  useEffect(() => {
+    if (!isPotentialAnime) return;
+    fetch(`/api/anime-match?tmdbId=${tv.id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && d.anilistId) {
+          setAnimeMatch({ anilistId: d.anilistId, malId: d.malId });
+        }
+      })
+      .catch(() => {});
+  }, [tv.id, isPotentialAnime]);
+
   const [season, setSeason] = useState<number>(tv.seasons.find((s) => s.season_number > 0)?.season_number ?? 1);
   const [episode, setEpisode] = useState<number>(1);
   const routingKey = `tv:${tv.id}:${season}:${episode}`;
   const mirrors = tvStreamUrls(tv.id, season, episode);
+
+  // If this TV series has an AniList anime match (e.g. One Piece), render the Aethoplex Anime Player!
+  if (animeMatch?.anilistId) {
+    const animeSeasons: AnimeSeasonItem[] = (tv.seasons || [])
+      .filter((s) => s.season_number > 0)
+      .map((s) => ({
+        id: s.id,
+        season_number: s.season_number,
+        name: s.name,
+        episode_count: s.episode_count,
+      }));
+
+    // For One Piece, check if Wano or another arc is selected or default to Season 1
+    const wanoSeason = animeSeasons.find((s) => s.name.toLowerCase().includes("wano"));
+    const initialSeason = wanoSeason ? wanoSeason.season_number : (animeSeasons[0]?.season_number ?? 1);
+
+    return (
+      <AethoAnimePlayer
+        title={tv.name}
+        overview={tv.overview}
+        posterPath={tv.poster_path}
+        backdropPath={tv.backdrop_path}
+        anilistId={animeMatch.anilistId}
+        malId={animeMatch.malId}
+        tmdbId={tv.id}
+        initialSeason={initialSeason}
+        seasons={animeSeasons}
+        backHref="/series"
+      />
+    );
+  }
 
   return (
     <div className="relative min-h-screen">

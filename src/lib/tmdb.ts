@@ -66,6 +66,7 @@ export interface TVListItem {
   backdrop_path: string | null;
   vote_average: number;
   first_air_date: string | null;
+  original_language?: string;
 }
 
 export interface Season {
@@ -113,7 +114,7 @@ export interface Video {
 
 // ── Internal fetch helper with primary/fallback ──────────────────────────────
 
-async function tmdbFetch<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
+export async function tmdbFetch<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
   const queryParams = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]));
   let lastError: unknown = null;
 
@@ -225,6 +226,8 @@ export async function tvDetail(id: number): Promise<TVDetail> {
 export async function tvSeason(tvId: number, seasonNumber: number): Promise<{ episodes: Episode[] }> {
   return tmdbFetch<{ episodes: Episode[] }>(`/tv/${tvId}/season/${seasonNumber}`);
 }
+
+export const tvSeasonDetail = tvSeason;
 
 export async function videos(mediaType: "movie" | "tv", id: number): Promise<Video[]> {
   const data = await tmdbFetch<{ results: Video[] }>(`/${mediaType}/${id}/videos`);

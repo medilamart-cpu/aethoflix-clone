@@ -5,15 +5,15 @@ export const runtime = "edge";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id"); // anilist ID
-  const s = searchParams.get("s") || "1";
   const e = searchParams.get("e") || "1";
+  const sub = searchParams.get("sub") || "sub";
 
   if (!id) {
     return NextResponse.json({ ok: false, error: "Missing AniList ID" }, { status: 400 });
   }
 
   try {
-    const embedUrl = `https://cdn.4animo.xyz/embed/hd-1/ani/${id}/${s}/${e}?k=1`;
+    const embedUrl = `https://cdn.4animo.xyz/embed/hd-1/ani/${id}/${e}/${sub}?k=1`;
     const res = await fetch(embedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
