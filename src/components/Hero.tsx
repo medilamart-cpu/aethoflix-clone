@@ -61,7 +61,7 @@ export function Hero({ item: initialItem, items = [initialItem] }: HeroProps) {
             >
               <Play className="h-4 w-4 fill-current" /> Watch now
             </Link>
-            <Link href={href} className="hero-info-button"><Info size={17} /> More info</Link>
+            <Link href={href} className="hero-info-button"><Info size={17} /> More details</Link>
           </div>
           {items.length > 1 && <div className="hero-pagination"><span>{String(activeIndex + 1).padStart(2,"0")} <i>/</i> {String(items.length).padStart(2,"0")}</span><div>{items.map((feature,index) => <button type="button" key={feature.id} aria-label={`Show feature ${index + 1}`} aria-current={index === activeIndex} onClick={() => setActiveIndex(index)} className={index === activeIndex ? "hero-page-active" : ""} />)}</div><button type="button" className="hero-arrow" aria-label="Previous feature" onClick={() => setActiveIndex((activeIndex - 1 + items.length) % items.length)}>‹</button><button type="button" className="hero-arrow" aria-label="Next feature" onClick={() => setActiveIndex((activeIndex + 1) % items.length)}>›</button></div>}
         </div>

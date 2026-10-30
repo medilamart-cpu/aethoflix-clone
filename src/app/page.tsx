@@ -1,4 +1,4 @@
-import { Navbar } from "@/components/Navbar";
+import { MobileDock, Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/Hero";
 import { BrowseFilters } from "@/components/BrowseFilters";
@@ -39,5 +39,6 @@ export default async function Home() {
       <ThemedCollectionFeed type="all" />
     </main>
     <Footer />
+    <MobileDock />
   </div>;
 }

@@ -1398,6 +1398,57 @@ body.modal-open { overflow:hidden; }
 .media-details-dialog { position:relative; width:min(780px,100%); max-height:min(850px,calc(100dvh - 48px)); overflow:auto; color:#eff2f6; border:1px solid rgba(255,255,255,.13); border-radius:18px; background:#0d1119; box-shadow:0 30px 100px #000b; animation:dialog-in .22s ease both; }
 .media-details-close { position:absolute; top:16px; right:16px; z-index:5; width:35px; height:35px; display:grid; place-items:center; color:#f3f4f7; border:1px solid rgba(255,255,255,.19); border-radius:50%; background:rgba(8,12,18,.62); backdrop-filter:blur(8px); cursor:pointer; }
 .media-details-banner { min-height:370px; position:relative; display:flex; align-items:flex-end; overflow:hidden; background:#141922; }
+
+/* Homepage shell tuned to the current Aethoplex reference. */
+body:has(.home-hero) .site-header { height:74px; }
+body:has(.home-hero) .brand-mark { font-size:11px; font-weight:760; letter-spacing:.18em; }
+body:has(.home-hero) .brand-icon { width:25px; height:25px; border-radius:8px; }
+body:has(.home-hero) .nav-link { font-size:12px; font-weight:520; letter-spacing:.015em; }
+body:has(.home-hero) .hero-title-art { width:min(560px,58vw); max-height:110px; margin-bottom:10px; }
+body:has(.home-hero) .hero-eyebrow { font-size:8px; font-weight:700; letter-spacing:.15em; }
+body:has(.home-hero) .hero-overview { max-width:420px; font-size:12px; line-height:1.56; }
+body:has(.home-hero) .hero-info-button { font-weight:660; }
+body:has(.home-hero) .media-shelf-heading { padding-inline:0; }
+body:has(.home-hero) .media-shelf-heading h2 { font-family:var(--font-sans); font-size:17px; font-weight:580; letter-spacing:-.035em; }
+body:has(.home-hero) .media-shelf-heading p { margin-top:3px; font-size:10px; }
+.mobile-dock { display:none; }
+
+@media(max-width:760px) {
+  body:has(.home-hero) .site-header { height:74px; }
+  body:has(.home-hero) .site-nav { height:74px; padding-inline:20px; gap:12px; }
+  body:has(.home-hero) .brand-mark { gap:10px; font-size:11px; font-weight:760; letter-spacing:.18em; }
+  body:has(.home-hero) .brand-icon { width:25px; height:25px; }
+  body:has(.home-hero) .nav-actions { width:auto; flex:1; margin-left:auto; }
+  body:has(.home-hero) .nav-search-form { width:auto; min-width:0; max-width:245px; height:38px; flex:1; margin-left:auto; padding:0 12px; gap:10px; border-radius:13px; }
+  body:has(.home-hero) .nav-search-form input { width:100%; padding:0; opacity:1; font-size:10px; }
+  body:has(.home-hero) .nav-search-form input::placeholder { color:#a6afbb; }
+  body:has(.home-hero) .mobile-menu-button { display:none; }
+  body:has(.home-hero) .home-hero { height:min(600px,95svh); min-height:560px; }
+  body:has(.home-hero) .hero-image { object-position:center 32%; }
+  body:has(.home-hero) .hero-content { padding:0 32px 104px; }
+  body:has(.home-hero) .hero-title-art { width:min(560px,86vw); max-height:110px; }
+  body:has(.home-hero) .hero-content h1 { font-size:clamp(44px,12vw,72px); }
+  body:has(.home-hero) .hero-overview { max-width:420px; font-size:12px; line-height:1.56; }
+  body:has(.home-hero) .hero-actions { margin-top:19px; }
+  body:has(.home-hero) .hero-watch-button,body:has(.home-hero) .hero-info-button { min-height:41px; padding-inline:16px; }
+  body:has(.home-hero) .hero-pagination { right:32px; bottom:39px; }
+  body:has(.home-hero) main.mx-auto.max-w-7xl { width:100%; padding:10px 20px 65px; }
+  body:has(.home-hero) .browse-panel { margin:0 0 33px; }
+  body:has(.home-hero) .media-shelf { margin-block:30px 27px; }
+  body:has(.home-hero) .media-shelf-heading { padding:0 0 11px; }
+  body:has(.home-hero) .media-shelf-heading h2 { font-family:var(--font-sans); font-size:17px; font-weight:580; letter-spacing:-.035em; }
+  body:has(.home-hero) .media-shelf-heading p { font-size:10px; }
+  body:has(.home-hero) .mobile-dock { position:fixed; z-index:200; inset:auto 12px max(11px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); min-height:61px; padding:7px; border:1px solid rgba(255,255,255,.15); border-radius:20px; background:rgba(12,16,24,.84); box-shadow:0 10px 34px rgba(0,0,0,.34); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+  body:has(.home-hero) .mobile-dock-link { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#98a2b2; border-radius:13px; font-size:8px; line-height:12px; }
+  body:has(.home-hero) .mobile-dock-link.dock-active { color:#edf4fc; background:#202b3c; }
+}
+
+@media(max-width:420px) {
+  body:has(.home-hero) .site-nav { padding-inline:14px; }
+  body:has(.home-hero) .nav-search-form { max-width:245px; }
+  body:has(.home-hero) .hero-content { padding-inline:24px; }
+  body:has(.home-hero) .hero-pagination { right:24px; }
+}
 .media-details-banner > img { object-position:center 35%; }
 .media-details-shade { position:absolute; inset:0; background:linear-gradient(0deg,#0d1119 0%,rgba(13,17,25,.94) 10%,rgba(13,17,25,.33) 75%,rgba(13,17,25,.08)),linear-gradient(90deg,rgba(7,10,15,.5),transparent); }
 .media-details-copy { position:relative; z-index:2; width:100%; padding:68px 30px 22px; }
