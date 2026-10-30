@@ -193,6 +193,7 @@ export interface DiscoverTVParams {
   with_origin_country?: string;
   first_air_date_year?: number;
   sort_by?: string; // e.g., "popularity.desc"
+  vote_count_gte?: number;
   include_adult?: boolean;
   page?: number;
 }
@@ -200,6 +201,7 @@ export interface DiscoverTVParams {
 export async function discoverTV(params: DiscoverTVParams = {}): Promise<TVListItem[]> {
   const data = await tmdbFetch<{ results: TVListItem[] }>(`/discover/tv`, {
     sort_by: params.sort_by ?? "popularity.desc",
+    ...(params.vote_count_gte ? { "vote_count.gte": params.vote_count_gte } : {}),
     include_adult: params.include_adult ?? false,
     page: params.page ?? 1,
     ...(params.with_genres ? { with_genres: params.with_genres } : {}),

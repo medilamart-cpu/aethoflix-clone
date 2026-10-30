@@ -106,9 +106,11 @@ export function MovieDetailPage({ movie }: MovieDetailPageProps) {
 
 interface TVDetailPageProps {
   tv: TVDetail;
+  initialSeason?: number;
+  initialEpisode?: number;
 }
 
-export function TVDetailPage({ tv }: TVDetailPageProps) {
+export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPageProps) {
   const isPotentialAnime =
     tv.original_language === "ja" ||
     tv.genres?.some((g) => g.name.toLowerCase() === "animation");
@@ -129,8 +131,8 @@ export function TVDetailPage({ tv }: TVDetailPageProps) {
       .catch(() => {});
   }, [tv.id, isPotentialAnime, animeMatch?.anilistId]);
 
-  const [season, setSeason] = useState<number>(tv.seasons.find((s) => s.season_number > 0)?.season_number ?? 1);
-  const [episode, setEpisode] = useState<number>(1);
+  const [season, setSeason] = useState<number>(initialSeason ?? tv.seasons.find((s) => s.season_number > 0)?.season_number ?? 1);
+  const [episode, setEpisode] = useState<number>(initialEpisode ?? 1);
   const routingKey = `tv:${tv.id}:${season}:${episode}`;
   const mirrors = tvStreamUrls(tv.id, season, episode);
 

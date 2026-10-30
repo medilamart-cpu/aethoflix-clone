@@ -3,6 +3,7 @@ import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/Hero";
 import { BrowseFilters } from "@/components/BrowseFilters";
 import { MediaRow } from "@/components/MediaRow";
+import { ThemedCollectionFeed } from "@/components/ThemedCollectionFeed";
 import { discoverTV, kdrama, moviesFromIndia, moviesNowPlaying, moviesPopular, trending, tvAiringToday, tvPopular, tvTopRated } from "@/lib/tmdb";
 
 export const runtime = "edge";
@@ -35,6 +36,7 @@ export default async function Home() {
       <MediaRow title="Stories from India" description="A home for every kind of cinema" items={india} hrefForItem={hrefOf} titleForItem={titleOf} />
       <MediaRow title="The all-time greats" description="Voted into the collection" items={classics} hrefForItem={hrefOf} titleForItem={titleOf} />
       <MediaRow title="On air this week" description="New episodes landing now" items={onAir} hrefForItem={hrefOf} titleForItem={titleOf} />
+      <ThemedCollectionFeed type="all" />
     </main>
     <Footer />
   </div>;
