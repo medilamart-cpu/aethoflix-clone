@@ -17,7 +17,7 @@ export function LiveTVPlayer({ initialChannels, initialVersion = "v1" }: LiveTVP
   const [guideError, setGuideError] = useState<boolean>(false);
 
   // Active playing channel
-  const [selectedChannel, setSelectedChannel] = useState<LiveChannel | null>(initialChannels[0] || null);
+  const [selectedChannel, setSelectedChannel] = useState<LiveChannel | null>(null);
 
   // Search & category filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -37,11 +37,11 @@ export function LiveTVPlayer({ initialChannels, initialVersion = "v1" }: LiveTVP
       .then((data) => {
         if (!isCancelled && data.ok && Array.isArray(data.channels) && data.channels.length > 0) {
           setChannels(data.channels);
-          // If no channel selected or current channel belongs to other directory, pick first
+          // Keep the guide quiet until the viewer chooses a channel.
           setSelectedChannel((prev) => {
-            if (!prev) return data.channels[0];
+            if (!prev) return null;
             const exists = data.channels.some((c: LiveChannel) => c.id === prev.id);
-            return exists ? prev : data.channels[0];
+            return exists ? prev : null;
           });
         }
       })
@@ -85,6 +85,7 @@ export function LiveTVPlayer({ initialChannels, initialVersion = "v1" }: LiveTVP
 
   return (
     <div className="flex flex-col gap-6">
+      <section className="live-page-heading"><div><span className="section-kicker"><i className="live-indicator" /> LIVE TELEVISION</span><h1>On air, right now.</h1><p>A live guide for the moments between stories.</p></div><div className="live-version-switch"><button type="button" className={version === "v1" ? "mode-active" : ""} onClick={() => { setVersion("v1"); setSelectedCategory("All channels"); setVisibleCount(48); }}>India channels</button><button type="button" className={version === "v2" ? "mode-active" : ""} onClick={() => { setVersion("v2"); setSelectedCategory("All channels"); setVisibleCount(48); }}>24 / 7 mix</button></div></section>
       {/* ── Active Live Stream Player ── */}
       {selectedChannel && (
         <div ref={playerRef} className="flex flex-col gap-3">
@@ -100,7 +101,7 @@ export function LiveTVPlayer({ initialChannels, initialVersion = "v1" }: LiveTVP
             {/* Corner Live Badge */}
             <div className="screen-corner-label">
               <span className="live-indicator" />
-              <span>AETHOFLIX LIVE</span>
+              <span>AETHOPLEX LIVE</span>
             </div>
           </div>
 
@@ -146,43 +147,6 @@ export function LiveTVPlayer({ initialChannels, initialVersion = "v1" }: LiveTVP
           </div>
         </div>
       )}
-
-      {/* ── Version Switcher (India Channels vs 24/7 Mix) ── */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
-        <div>
-          <div className="section-overline">
-            <span className="live-indicator" />
-            <span>CHANNEL DIRECTORY</span>
-          </div>
-          <h3 className="text-xl font-bold tracking-tight text-white mt-1">Browse Live Channels</h3>
-        </div>
-
-        {/* Directory switcher buttons */}
-        <div className="live-version-switch">
-          <button
-            type="button"
-            className={version === "v1" ? "mode-active" : ""}
-            onClick={() => {
-              setVersion("v1");
-              setSelectedCategory("All channels");
-              setVisibleCount(48);
-            }}
-          >
-            🇮🇳 India channels ({channels.length > 0 && version === "v1" ? channels.length : "1,200+"})
-          </button>
-          <button
-            type="button"
-            className={version === "v2" ? "mode-active" : ""}
-            onClick={() => {
-              setVersion("v2");
-              setSelectedCategory("All channels");
-              setVisibleCount(48);
-            }}
-          >
-            🌐 24 / 7 mix
-          </button>
-        </div>
-      </div>
 
       {/* ── Search & Filter Tools ── */}
       <div className="flex flex-col gap-3">

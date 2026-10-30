@@ -165,6 +165,13 @@ export async function moviesTopRated(page = 1): Promise<MovieListItem[]> {
   return data.results ?? [];
 }
 
+export async function moviesFromIndia(page = 1): Promise<MovieListItem[]> {
+  const data = await tmdbFetch<{ results: MovieListItem[] }>(`/discover/movie`, {
+    with_origin_country: "IN", sort_by: "popularity.desc", include_adult: false, page,
+  });
+  return data.results ?? [];
+}
+
 export async function tvPopular(page = 1): Promise<TVListItem[]> {
   const data = await tmdbFetch<{ results: TVListItem[] }>(`/tv/popular`, { page });
   return data.results ?? [];
@@ -183,6 +190,7 @@ export async function tvAiringToday(page = 1): Promise<TVListItem[]> {
 export interface DiscoverTVParams {
   with_genres?: string; // comma-separated TMDb genre IDs
   with_original_language?: string; // e.g., "ko" for Korean content
+  with_origin_country?: string;
   first_air_date_year?: number;
   sort_by?: string; // e.g., "popularity.desc"
   include_adult?: boolean;
@@ -196,6 +204,7 @@ export async function discoverTV(params: DiscoverTVParams = {}): Promise<TVListI
     page: params.page ?? 1,
     ...(params.with_genres ? { with_genres: params.with_genres } : {}),
     ...(params.with_original_language ? { with_original_language: params.with_original_language } : {}),
+    ...(params.with_origin_country ? { with_origin_country: params.with_origin_country } : {}),
     ...(params.first_air_date_year ? { first_air_date_year: params.first_air_date_year } : {}),
   });
   return data.results ?? [];

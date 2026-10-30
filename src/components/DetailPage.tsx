@@ -23,7 +23,7 @@ export function MovieDetailPage({ movie }: MovieDetailPageProps) {
   const mirrors = movieStreamUrls(movie.id);
 
   return (
-    <div className="relative min-h-screen">
+    <div className="detail-page relative min-h-screen">
       <Image
         src={backdropUrl(movie.backdrop_path, "w1280")}
         alt={movie.title}
@@ -166,7 +166,7 @@ export function TVDetailPage({ tv }: TVDetailPageProps) {
   }
 
   return (
-    <div className="relative min-h-screen">
+    <div className="detail-page relative min-h-screen">
       <Image
         src={backdropUrl(tv.backdrop_path, "w1280")}
         alt={tv.name}

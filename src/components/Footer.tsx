@@ -1,35 +1,22 @@
 import Link from "next/link";
-import { Mail, MessageCircle } from "lucide-react";
+import { Mail } from "lucide-react";
 
-const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "MyFlix";
+const SITES = [
+  ["Aethoflix", "https://aethoflix.world/"],
+  ["Almost OTT", "https://almostott.aethoflix.world/"],
+  ["Theatre", "https://theatre.aethoflix.world/"],
+  ["Cinema", "https://cinema.aethoflix.world/"],
+  ["Island", "https://island.aethoflix.world/"],
+];
 
 export function Footer() {
-  return (
-    <footer className="mt-16 border-t border-white/5 bg-background/50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm text-neutral-500">
-            © {new Date().getFullYear()} {SITE_NAME}. This product uses the TMDB API but is not endorsed or certified by TMDB.
-          </p>
-          <p className="mt-2 text-xs text-neutral-600">
-            AniList data © AniList contributors. Live TV data © LiveTVGT.
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link
-            href="mailto:contact@example.com"
-            className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white"
-          >
-            <Mail className="h-4 w-4" /> Contact
-          </Link>
-          <Link
-            href="#"
-            className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white"
-          >
-            <MessageCircle className="h-4 w-4" /> Support
-          </Link>
-        </div>
-      </div>
-    </footer>
-  );
+  return <footer className="site-footer">
+    <div className="footer-grid">
+      <div className="footer-about"><Link href="/" className="footer-logo">AETHO<span>PLEX</span></Link><p>Stories, thoughtfully found. A calm home for films, series, anime and live television from around the world.</p><a className="footer-contact" href="mailto:Aethoflix@gmail.com"><Mail size={14} /> Aethoflix@gmail.com</a><p className="footer-copyright">© {new Date().getFullYear()} Aethoplex. All rights reserved.</p></div>
+      <div className="footer-column"><h2>EXPLORE</h2><Link href="/">Discover</Link><Link href="/live">Live television</Link><Link href="/my-list">My list</Link><Link href="/faq">Help centre</Link></div>
+      <div className="footer-column"><h2>AETHOPLEX</h2><Link href="/about">About</Link><Link href="/faq">FAQ</Link><Link href="/dmca">DMCA &amp; removal</Link><a href="mailto:Aethoflix@gmail.com">Contact</a></div>
+      <div className="footer-column"><h2>OUR SITES</h2>{SITES.map(([name,url])=><a key={name} href={url} target="_blank" rel="noreferrer">{name}</a>)}</div>
+    </div>
+    <div className="footer-credits"><span className="tmdb-mark">TMDB</span><span>CREDITS</span><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><small>AniList data © AniList contributors. Live TV data © LiveTVGT.</small></div>
+  </footer>;
 }

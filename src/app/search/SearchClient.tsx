@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { searchMulti, type TrendingMedia } from "@/lib/tmdb";
 import { searchAnime, animeDisplayName, type AnimeMedia } from "@/lib/anilist";
@@ -39,6 +39,13 @@ export function SearchClient() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (q && !hasSearched) {
+      setInput(q);
+      void onSearch(q);
+    }
+  }, [q, hasSearched]);
 
   return (
     <div className="mt-6">
