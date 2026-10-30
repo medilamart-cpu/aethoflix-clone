@@ -302,12 +302,10 @@ export function AethoAnimePlayer({
             {/* Row 2: Clean Series Title & Utility Actions */}
             <div className="watch-meta-row2">
               <div className="min-w-0">
-                <h1>{title}</h1>
-                {currentEpisodeDetails?.name && (
-                  <p className="watch-episode-subtitle">
-                    Episode {selectedEpisode}: {currentEpisodeDetails.name}
-                  </p>
-                )}
+                <h1>
+                  {title}
+                  {currentEpisodeDetails?.name ? ` / ${currentEpisodeDetails.name}` : ""}
+                </h1>
               </div>
 
               <div className="watch-row2-actions">
@@ -400,7 +398,7 @@ export function AethoAnimePlayer({
                       onClick={() => setSelectedEpisode(ep.episode_number)}
                       className={`player-episode group ${isCurrent ? "selected" : ""}`}
                     >
-                      <span className="player-episode-number">{ep.episode_number}</span>
+                      <span className="player-episode-number">{String(ep.episode_number).padStart(2, "0")}</span>
 
                       <span className="player-episode-still">
                         {ep.still_path ? (
@@ -479,30 +477,6 @@ export function AethoAnimePlayer({
 
             {/* Server Grid: Video.js Direct + Embed Mirrors */}
             <div className="server-list">
-              {/* Premier Option: Direct CDN Video.js */}
-              <button
-                type="button"
-                onClick={() => setServerId("videojs")}
-                className={`server-option col-span-2 ${serverId === "videojs" ? "server-active" : ""}`}
-                aria-pressed={serverId === "videojs"}
-              >
-                <span className="server-number flex items-center justify-center text-amber-300">
-                  <Zap className="h-3.5 w-3.5" />
-                </span>
-                <span className="server-name">
-                  <span className="flex items-center gap-1.5">
-                    <span>Direct CDN</span>
-                    <span className="rounded bg-sky-500/20 px-1 py-0.5 text-[7.5px] font-bold text-sky-300">Video.js</span>
-                  </span>
-                  <small>{serverId === "videojs" ? "Now streaming ad-free" : directHlsUrl ? "Ad-Free • Ready" : resolvingDirect ? "Resolving stream..." : "High-speed HLS"}</small>
-                </span>
-                {serverId === "videojs" ? (
-                  <Check className="h-4 w-4 text-cyan-300 ml-auto" />
-                ) : (
-                  <ArrowUpRight className="h-3.5 w-3.5 text-neutral-400 ml-auto" />
-                )}
-              </button>
-
               {servers.map((s) => {
                 const isActive = serverId === s.id;
                 return (

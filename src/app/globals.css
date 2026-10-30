@@ -5,7 +5,7 @@
   --color-foreground: #ffffff;
   --color-muted: #a3a3a3;
   --color-accent: #e50d75;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * {
@@ -20,6 +20,12 @@ html, body {
   scroll-behavior: smooth;
   max-width: 100vw;
   overflow-x: hidden;
+}
+
+/* The anime watch view is a focused player surface without catalog chrome. */
+body:has(.watch-page) .site-header,
+body:has(.watch-page) .site-footer {
+  display: none;
 }
 
 /* Hide scrollbar on horizontal scroll containers but keep functionality */
@@ -172,6 +178,11 @@ img {
     box-sizing: border-box;
     overflow-x: hidden;
   }
+
+  .watch-sidebar {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 480px) {
@@ -322,8 +333,8 @@ img {
   color: #f4f6fa;
   letter-spacing: -0.04em;
   margin: 0;
-  font-size: clamp(22px, 3.2vw, 32px);
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 570;
   line-height: 1.2;
 }
 
@@ -511,7 +522,7 @@ img {
   background: transparent;
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  grid-template-columns: 32px 112px minmax(0, 1fr) auto;
+  grid-template-columns: 24px 85px minmax(0, 1fr) auto;
   align-items: center;
   gap: 13px;
   min-height: 74px;
@@ -546,7 +557,7 @@ img {
   background: #1a202b;
   border-radius: 7px;
   place-items: center;
-  width: 112px;
+  width: 85px;
   display: grid;
   overflow: hidden;
 }
@@ -573,8 +584,8 @@ img {
   color: #edf1f6;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
-  font-weight: 560;
+  font-size: 10px;
+  font-weight: 570;
   overflow: hidden;
 }
 
