@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Star, Play } from "lucide-react";
+import { ArrowLeft, Film, Download, Share2, ChevronDown } from "lucide-react";
 import { VideoPlayer } from "./VideoPlayer";
-import { MediaRow } from "./MediaRow";
-import { posterUrl, backdropUrl } from "@/lib/tmdb";
+import { backdropUrl } from "@/lib/tmdb";
 import type { MovieDetail, TVDetail } from "@/lib/tmdb";
 import { movieStreamUrls, tvStreamUrls, getKnownAnimeMatch } from "@/lib/providers";
 import { AethoAnimePlayer, type AnimeSeasonItem } from "./AethoAnimePlayer";
@@ -21,85 +19,52 @@ interface MovieDetailPageProps {
 export function MovieDetailPage({ movie }: MovieDetailPageProps) {
   const routingKey = `movie:${movie.id}`;
   const mirrors = movieStreamUrls(movie.id);
+  const [shareToast, setShareToast] = useState(false);
 
   return (
-    <div className="detail-page relative min-h-screen">
-      <Image
-        src={backdropUrl(movie.backdrop_path, "w1280")}
-        alt={movie.title}
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover opacity-30 blur-sm"
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/55 to-background" />
-
-      <div className="relative z-10 mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <div className="watch-page media-watch-page">
+      <header className="watch-header">
         <Link
           href="/movies"
-          className="flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-black/80 hover:text-white"
+          className="flex items-center gap-2 text-xs font-medium text-neutral-300 transition-colors hover:text-white"
         >
-          <ArrowLeft className="h-3 w-3" /> Back
+          <ArrowLeft className="h-4 w-4" /> Back to browse
         </Link>
+        <div className="watch-header-side"><span className="watch-live-dot" /><span>NOW PLAYING</span></div>
+      </header>
 
-        <div className="mt-6 flex flex-col gap-6 md:flex-row">
-          <Image
-            src={posterUrl(movie.poster_path, "w500")}
-            alt={movie.title}
-            width={200}
-            height={300}
-            className="rounded-xl border border-white/10 shadow-2xl"
-          />
-          <div className="flex-1">
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{movie.title}</h1>
-            <div className="mt-2 flex items-center gap-3 text-sm text-neutral-300">
-              {movie.vote_average > 0 && (
-                <span className="flex items-center gap-1">
-                  <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                  {movie.vote_average.toFixed(1)}
-                </span>
-              )}
-              {movie.release_date && <span>{movie.release_date.slice(0, 4)}</span>}
-              {movie.runtime && <span>{movie.runtime} min</span>}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {movie.genres.map((g) => (
-                <span
-                  key={g.id}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-0.5 text-xs"
-                >
-                  {g.name}
-                </span>
-              ))}
-            </div>
-            <p className="mt-4 text-sm leading-relaxed text-neutral-300">
-              {movie.overview || "No overview available."}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-            <Play className="h-4 w-4" /> Watch now
-          </h2>
+      <main className="watch-layout media-watch-layout">
+        <section className="watch-main">
           <VideoPlayer
             routingKey={routingKey}
             routingTitle={movie.title}
             mirrors={mirrors}
+            poster={backdropUrl(movie.backdrop_path, "w1280")}
             adPartnerUrl1={AD_PARTNER_URL_1 || undefined}
             adPartnerUrl2={AD_PARTNER_URL_2 || undefined}
           />
-        </div>
-
-        {movie.similar?.results && movie.similar.results.length > 0 && (
-          <MediaRow
-            title="More like this"
-            items={movie.similar.results}
-            hrefForItem={(item) => `/watch/movie/${item.id}`}
-            titleForItem={(item) => "title" in item ? (item as { title: string }).title : "Untitled"}
-          />
-        )}
-      </div>
+          <div className="watch-meta-block">
+            <div className="watch-meta-row1">
+              <span className="section-overline"><Film className="h-3 w-3" /> FILM PLAYER</span>
+              <div className="watch-row1-actions">
+                <a href={`https://theatre.aethoflix.world/?tmdb=${movie.id}&type=movie&title=${encodeURIComponent(movie.title)}`} target="_blank" rel="noreferrer" className="theatre-action"><Film className="h-3.5 w-3.5 text-blue-300" /><span>Play in Theatre</span></a>
+              </div>
+            </div>
+            <div className="watch-meta-row2">
+              <div className="min-w-0">
+                <h1>{movie.title}</h1>
+                <p className="media-watch-facts">{movie.release_date?.slice(0, 4)}{movie.runtime ? ` / ${movie.runtime} min` : ""}{movie.vote_average > 0 ? ` / ${movie.vote_average.toFixed(1)}` : ""}</p>
+              </div>
+              <div className="watch-row2-actions">
+                <button type="button" className="icon-action-btn" title="Download options" aria-label="Download options"><Download className="h-4 w-4" /></button>
+                <button type="button" onClick={() => { navigator.clipboard?.writeText(window.location.href).then(() => { setShareToast(true); window.setTimeout(() => setShareToast(false), 2200); }); }} className="icon-action-btn" title="Share link" aria-label="Share link"><Share2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+            {shareToast && <span className="media-share-toast">Link copied</span>}
+            <p className="watch-description">{movie.overview || "No overview available."}</p>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
@@ -133,8 +98,21 @@ export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPage
 
   const [season, setSeason] = useState<number>(initialSeason ?? tv.seasons.find((s) => s.season_number > 0)?.season_number ?? 1);
   const [episode, setEpisode] = useState<number>(initialEpisode ?? 1);
+  const [episodes, setEpisodes] = useState<Array<{ id: number; episode_number: number; name: string; still_path: string | null; runtime?: number | null; overview?: string }>>([]);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
   const routingKey = `tv:${tv.id}:${season}:${episode}`;
   const mirrors = tvStreamUrls(tv.id, season, episode);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEpisodesLoading(true);
+    fetch(`/api/tv/${tv.id}/season/${season}`)
+      .then((response) => response.json())
+      .then((data) => { if (!cancelled && Array.isArray(data.episodes)) setEpisodes(data.episodes); })
+      .catch(() => { if (!cancelled) setEpisodes([]); })
+      .finally(() => { if (!cancelled) setEpisodesLoading(false); });
+    return () => { cancelled = true; };
+  }, [tv.id, season]);
 
   // If this TV series has an AniList anime match (e.g. One Piece), render the Aethoplex Anime Player!
   if (animeMatch?.anilistId) {
@@ -168,134 +146,38 @@ export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPage
   }
 
   return (
-    <div className="detail-page relative min-h-screen">
-      <Image
-        src={backdropUrl(tv.backdrop_path, "w1280")}
-        alt={tv.name}
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover opacity-30 blur-sm"
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/55 to-background" />
-
-      <div className="relative z-10 mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <div className="watch-page media-watch-page">
+      <header className="watch-header">
         <Link
           href="/series"
-          className="flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-black/80 hover:text-white"
+          className="flex items-center gap-2 text-xs font-medium text-neutral-300 transition-colors hover:text-white"
         >
-          <ArrowLeft className="h-3 w-3" /> Back
+          <ArrowLeft className="h-4 w-4" /> Back to browse
         </Link>
+        <div className="watch-header-side"><span className="watch-live-dot" /><span>NOW PLAYING</span></div>
+      </header>
 
-        <div className="mt-6 flex flex-col gap-6 md:flex-row">
-          <Image
-            src={posterUrl(tv.poster_path, "w500")}
-            alt={tv.name}
-            width={200}
-            height={300}
-            className="rounded-xl border border-white/10 shadow-2xl"
-          />
-          <div className="flex-1">
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{tv.name}</h1>
-            <div className="mt-2 flex items-center gap-3 text-sm text-neutral-300">
-              {tv.vote_average > 0 && (
-                <span className="flex items-center gap-1">
-                  <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                  {tv.vote_average.toFixed(1)}
-                </span>
-              )}
-              {tv.first_air_date && <span>{tv.first_air_date.slice(0, 4)}</span>}
-              <span>{tv.number_of_seasons} seasons · {tv.number_of_episodes} eps</span>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {tv.genres.map((g) => (
-                <span
-                  key={g.id}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-0.5 text-xs"
-                >
-                  {g.name}
-                </span>
-              ))}
-            </div>
-            <p className="mt-4 text-sm leading-relaxed text-neutral-300">
-              {tv.overview || "No overview available."}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-neutral-400 font-medium">
-            Season
-            <select
-              value={season}
-              onChange={(e) => {
-                setSeason(Number(e.target.value));
-                setEpisode(1);
-              }}
-              className="min-h-10 rounded-lg border border-white/15 bg-neutral-900 px-3 text-sm text-white cursor-pointer"
-            >
-              {tv.seasons
-                .filter((s) => s.season_number > 0)
-                .map((s) => (
-                  <option key={s.id} value={s.season_number} className="bg-neutral-900 text-white">
-                    {s.name} ({s.episode_count} eps)
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-400 font-medium">
-            Episode
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={episode <= 1}
-                onClick={() => setEpisode((prev) => Math.max(1, prev - 1))}
-                className="min-h-10 px-3 rounded-lg border border-white/15 bg-neutral-900 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                ◀
-              </button>
-              <input
-                type="number"
-                min={1}
-                max={tv.seasons.find((s) => s.season_number === season)?.episode_count ?? 1}
-                value={episode}
-                onChange={(e) => setEpisode(Math.max(1, Number(e.target.value)))}
-                className="min-h-10 w-20 text-center rounded-lg border border-white/15 bg-neutral-900 px-2 text-sm font-semibold text-white"
-              />
-              <button
-                type="button"
-                disabled={episode >= (tv.seasons.find((s) => s.season_number === season)?.episode_count ?? 1)}
-                onClick={() => setEpisode((prev) => prev + 1)}
-                className="min-h-10 px-3 rounded-lg border border-white/15 bg-neutral-900 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                ▶
-              </button>
-            </div>
-          </label>
-        </div>
-
-        <div className="mt-6">
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-            <Play className="h-4 w-4" /> Watch S{season}E{episode}
-          </h2>
+      <main className="watch-layout media-watch-layout">
+        <section className="watch-main">
           <VideoPlayer
             routingKey={routingKey}
             routingTitle={`${tv.name} S${season}E${episode}`}
             mirrors={mirrors}
+            poster={backdropUrl(tv.backdrop_path, "w1280")}
             adPartnerUrl1={AD_PARTNER_URL_1 || undefined}
             adPartnerUrl2={AD_PARTNER_URL_2 || undefined}
           />
-        </div>
-
-        {tv.similar?.results && tv.similar.results.length > 0 && (
-          <MediaRow
-            title="More like this"
-            items={tv.similar.results}
-            hrefForItem={(item) => `/watch/tv/${item.id}`}
-            titleForItem={(item) => "name" in item ? (item as { name: string }).name : "Untitled"}
-          />
-        )}
-      </div>
+          <div className="watch-meta-block">
+            <div className="watch-meta-row1"><span className="section-overline"><Film className="h-3 w-3" /> SERIES PLAYER</span><div className="watch-row1-actions"><button type="button" className="next-episode-action" disabled={episode >= (tv.seasons.find((item) => item.season_number === season)?.episode_count ?? 1)} onClick={() => setEpisode((current) => current + 1)}>Next episode</button><a href={`https://theatre.aethoflix.world/?tmdb=${tv.id}&type=tv&season=${season}&episode=${episode}&title=${encodeURIComponent(tv.name)}`} target="_blank" rel="noreferrer" className="theatre-action"><Film className="h-3.5 w-3.5 text-blue-300" /><span>Play in Theatre</span></a></div></div>
+            <div className="watch-meta-row2"><div className="min-w-0"><h1>{tv.name} / {episodes.find((item) => item.episode_number === episode)?.name ?? `Episode ${episode}`}</h1><p className="media-watch-facts">{tv.first_air_date?.slice(0, 4)} / {tv.number_of_seasons} seasons / {tv.number_of_episodes} episodes</p></div></div>
+            <p className="watch-description">{tv.overview || "No overview available."}</p>
+          </div>
+          <section className="player-episodes">
+            <div className="episodes-header-block"><div className="episodes-header-row1"><span className="section-overline">UP NEXT, ON YOUR TERMS</span></div><div className="episodes-header-row2"><h2>Episodes</h2><label className="season-select-wrap"><select aria-label="Choose season" value={season} onChange={(event) => { setSeason(Number(event.target.value)); setEpisode(1); }}>{tv.seasons.filter((item) => item.season_number > 0).map((item) => <option key={item.id} value={item.season_number}>{item.name} ({item.episode_count} eps)</option>)}</select><ChevronDown className="h-3.5 w-3.5 text-neutral-400" /></label></div></div>
+            <div className="player-episode-list">{episodesLoading ? <div className="py-8 text-center text-xs text-neutral-400">Loading episodes...</div> : episodes.map((item) => <button key={item.id} type="button" onClick={() => setEpisode(item.episode_number)} className={`player-episode group ${item.episode_number === episode ? "selected" : ""}`}><span className="player-episode-number">{String(item.episode_number).padStart(2, "0")}</span><span className="player-episode-still">{item.still_path ? <img src={`https://image.tmdb.org/t/p/w300${item.still_path}`} alt={item.name} loading="lazy" /> : <Film className="h-4 w-4 text-neutral-500" />}</span><span className="player-episode-copy"><strong>{item.name || `Episode ${item.episode_number}`}</strong><small>{item.runtime ? `${item.runtime} min` : `Episode ${item.episode_number}`}</small></span>{item.episode_number === episode && <span className="playing-label">PLAYING</span>}</button>)}</div>
+          </section>
+        </section>
+      </main>
     </div>
   );
 }

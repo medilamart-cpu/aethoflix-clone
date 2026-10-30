@@ -393,7 +393,7 @@ export function VideoPlayer({
   const activeStreamUrl = (isDirectStream && directStreamUrl) ? directStreamUrl : (directStream?.url || null);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="media-video-player flex flex-col gap-3">
       {/* Video Viewport (Supports Native & Mobile Viewport Fullscreen) */}
       <div
         ref={viewportRef}

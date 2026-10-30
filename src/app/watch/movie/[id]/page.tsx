@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 import { MovieDetailPage } from "@/components/DetailPage";
+import { Footer } from "@/components/Footer";
 import { movieDetail } from "@/lib/tmdb";
 
 export const runtime = "edge";
@@ -21,10 +20,6 @@ export default async function WatchMoviePage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <MovieDetailPage movie={movie} />
-      <Footer />
-    </div>
+    <><MovieDetailPage movie={movie} /><Footer /></>
   );
 }

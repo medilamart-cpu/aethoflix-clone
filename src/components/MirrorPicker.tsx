@@ -22,32 +22,22 @@ export function MirrorPicker({
 }: MirrorPickerProps) {
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-neutral-400">
-            <Server className="h-3.5 w-3.5 text-indigo-400 animate-spin" /> Finalizing servers:
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-32 rounded-lg bg-emerald-500/10 border border-emerald-500/20 animate-pulse" />
-            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
-            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
-            <div className="h-8 w-24 rounded-lg bg-white/5 border border-white/10 animate-pulse" />
-          </div>
+      <div className="mirror-picker-panel">
+        <div className="mirror-picker-heading"><span className="section-overline"><Server className="h-3 w-3" /> STREAMING SERVERS</span><h2>Choose a server</h2><p>Switch between servers if a stream does not start.</p></div>
+        <div className="mirror-picker-list" aria-label="Available streaming servers">
+          {[0, 1, 2, 3].map((item) => <div key={item} className="server-option mirror-option mirror-option-loading"><span className="server-number">{String(item + 1).padStart(2, "0")}</span><span className="server-name"><span>Server {item + 1}</span><small>Checking availability</small></span></div>)}
         </div>
       </div>
     );
   }
 
-  const entries = Object.entries(mirrors);
+  const entries = Object.entries(mirrors).slice(0, 4);
 
   return (
-    <div className="flex flex-col gap-2.5">
-      {/* Quick Server Switch Buttons */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-neutral-400">
-          <Server className="h-3.5 w-3.5 text-indigo-400" /> Servers:
-        </span>
-        {entries.map(([label, url]) => {
+    <div className="mirror-picker-panel">
+      <div className="mirror-picker-heading"><span className="section-overline"><Server className="h-3 w-3" /> STREAMING SERVERS</span><h2>Choose a server</h2><p>Switch between servers if a stream does not start.</p></div>
+      <div className="mirror-picker-list" aria-label="Available streaming servers">
+        {entries.map(([label, url], index) => {
           const isSelected = selected === label;
           const isDirect =
             url.endsWith(".m3u8") ||
@@ -55,10 +45,6 @@ export function MirrorPicker({
             url.includes(".m3u8?") ||
             url.includes(".mp4?") ||
             url.startsWith("direct:");
-          const host = isDirect
-            ? "Direct CDN"
-            : url.split("//")[1]?.split("/")[0]?.replace("www.", "") || "";
-
           const isFastest = fastestLabel === label;
           const latency = latencies[label];
 
@@ -67,30 +53,12 @@ export function MirrorPicker({
               key={label}
               type="button"
               onClick={() => onSelect(label, url)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all cursor-pointer",
-                isSelected
-                  ? isDirect
-                    ? "border-emerald-500 bg-emerald-600/30 text-white shadow-md shadow-emerald-500/20"
-                    : "border-indigo-500 bg-indigo-600/30 text-white shadow-md shadow-indigo-500/20"
-                  : isDirect
-                  ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-300 hover:border-emerald-500/50 hover:bg-emerald-500/20"
-                  : isFastest
-                  ? "border-amber-500/40 bg-amber-500/[0.08] text-amber-300 hover:border-amber-500/60 hover:bg-amber-500/20"
-                  : "border-white/10 bg-white/[0.04] text-neutral-300 hover:border-white/25 hover:bg-white/10 hover:text-white"
-              )}
+              className={cn("server-option mirror-option", isSelected && "server-active", isFastest && !isSelected && "mirror-option-fastest")}
+              aria-pressed={isSelected}
             >
-              {isSelected && <Check className="h-3 w-3 text-emerald-400" />}
-              {isFastest && !isSelected && <Zap className="h-3 w-3 text-amber-400 animate-pulse" />}
-              <span>{label}</span>
-              <span className="text-[10px] text-neutral-400 opacity-75">
-                {isDirect ? "⚡ Direct" : latency ? `${latency}ms` : `(${host})`}
-              </span>
-              {isFastest && (
-                <span className="rounded-full bg-amber-400/20 border border-amber-400/40 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
-                  Fastest
-                </span>
-              )}
+              <span className="server-number">{isDirect ? <Zap className="h-3.5 w-3.5" /> : String(index + 1).padStart(2, "0")}</span>
+              <span className="server-name"><span>{isDirect ? "Direct CDN" : `Server ${index + 1}`}</span><small>{isSelected ? "Now streaming" : isFastest ? `Fastest · ${latency ?? "Ready"}ms` : latency ? `Ready · ${latency}ms` : "Tap to play"}</small></span>
+              {isSelected ? <Check className="h-4 w-4 text-cyan-300" /> : <span className="mirror-option-arrow">↗</span>}
             </button>
           );
         })}

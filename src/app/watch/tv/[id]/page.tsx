@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 import { TVDetailPage } from "@/components/DetailPage";
+import { Footer } from "@/components/Footer";
 import { tvDetail } from "@/lib/tmdb";
 
 export const runtime = "edge";
@@ -24,10 +23,6 @@ export default async function WatchTVPage({ params, searchParams }: { params: Pr
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <TVDetailPage tv={tv} initialSeason={Number.isInteger(initialSeason) && initialSeason > 0 ? initialSeason : undefined} initialEpisode={Number.isInteger(initialEpisode) && initialEpisode > 0 ? initialEpisode : undefined} />
-      <Footer />
-    </div>
+    <><TVDetailPage tv={tv} initialSeason={Number.isInteger(initialSeason) && initialSeason > 0 ? initialSeason : undefined} initialEpisode={Number.isInteger(initialEpisode) && initialEpisode > 0 ? initialEpisode : undefined} /><Footer /></>
   );
 }
