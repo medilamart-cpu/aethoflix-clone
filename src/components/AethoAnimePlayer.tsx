@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { getAnimeServers, type AnimeServerOption } from "@/lib/providers";
 import { VideoJSPlayer } from "./VideoJSPlayer";
+import { useIsLocalhost } from "@/lib/useIsLocalhost";
 
 export interface AnimeEpisodeItem {
   id: number;
@@ -68,6 +69,7 @@ export function AethoAnimePlayer({
   backHref = "/anime",
 }: AethoAnimePlayerProps) {
   const router = useRouter();
+  const isLocal = useIsLocalhost();
   const [selectedSeason, setSelectedSeason] = useState<number>(initialSeason);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(initialEpisode);
   const [subOrDub, setSubOrDub] = useState<"sub" | "dub">("sub");
@@ -234,7 +236,7 @@ export function AethoAnimePlayer({
                     onClick={() => setServerId(servers[0]?.id || "megaplay")}
                     className="rounded-lg bg-sky-500/20 border border-sky-400/30 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-500/30"
                   >
-                    Switch to Server 1 (MegaPlay)
+                    Switch to {isLocal ? "Server 1 (MegaPlay)" : "Server 1"}
                   </button>
                 </div>
               )
@@ -272,7 +274,11 @@ export function AethoAnimePlayer({
                   className="server-badge"
                   title="Click to change server"
                 >
-                  {serverId === "videojs" ? "⚡ DIRECT (VIDEO.JS)" : `SERVER ${activeServer.serverNumber}`}
+                  {serverId === "videojs"
+                    ? "DIRECT (VIDEO.JS)"
+                    : isLocal
+                    ? activeServer.name.toUpperCase()
+                    : `SERVER ${activeServer.serverNumber}`}
                 </button>
               </div>
 
@@ -452,6 +458,11 @@ export function AethoAnimePlayer({
               <span className="section-overline">
                 <Film className="h-3 w-3" />
                 <span>STREAMING SERVERS</span>
+                {isLocal && (
+                  <span className="ml-1.5 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 border border-emerald-500/30">
+                    DEV / LOCALHOST
+                  </span>
+                )}
               </span>
               <h2>Choose a server</h2>
               <p>Switch between servers if a stream does not start. Audio is matched by AniList ID.</p>
@@ -489,7 +500,7 @@ export function AethoAnimePlayer({
                   >
                     <span className="server-number">{String(s.serverNumber).padStart(2, "0")}</span>
                     <span className="server-name">
-                      <span>Server {s.serverNumber}</span>
+                      <span>{isLocal ? s.name : `Server ${s.serverNumber}`}</span>
                       <small>{isActive ? "Now streaming" : "Tap to play"}</small>
                     </span>
                     {isActive ? (

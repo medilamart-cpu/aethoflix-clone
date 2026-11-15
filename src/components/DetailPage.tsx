@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Film, Download, Share2, ChevronDown } from "lucide-react";
+import { ArrowLeft, Film, Download, Share2, ChevronDown, AlertCircle } from "lucide-react";
 import { VideoPlayer } from "./VideoPlayer";
 import { backdropUrl } from "@/lib/tmdb";
 import type { MovieDetail, TVDetail } from "@/lib/tmdb";
@@ -21,6 +21,10 @@ export function MovieDetailPage({ movie }: MovieDetailPageProps) {
   const mirrors = movieStreamUrls(movie.id);
   const [shareToast, setShareToast] = useState(false);
 
+  const isUpcoming = Boolean(
+    movie.release_date && new Date(movie.release_date).getTime() > Date.now()
+  );
+
   return (
     <div className="watch-page media-watch-page">
       <header className="watch-header">
@@ -35,6 +39,14 @@ export function MovieDetailPage({ movie }: MovieDetailPageProps) {
 
       <main className="watch-layout media-watch-layout">
         <section className="watch-main">
+          {isUpcoming && (
+            <div className="mb-3.5 flex items-center gap-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 px-4 py-2.5 text-xs text-amber-200">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Upcoming Theatrical Release ({movie.release_date?.slice(0, 4) || "Unreleased"}):</strong> This movie has not yet been released in theatres or streaming. Streams from external server scrapers may contain placeholder teasers or dummy content.
+              </span>
+            </div>
+          )}
           <VideoPlayer
             routingKey={routingKey}
             routingTitle={movie.title}
@@ -102,6 +114,7 @@ export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPage
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const routingKey = `tv:${tv.id}:${season}:${episode}`;
   const mirrors = tvStreamUrls(tv.id, season, episode);
+  const isUpcoming = Boolean(tv.first_air_date && new Date(tv.first_air_date).getTime() > Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +172,14 @@ export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPage
 
       <main className="watch-layout media-watch-layout">
         <section className="watch-main">
+          {isUpcoming && (
+            <div className="mb-3.5 flex items-center gap-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 px-4 py-2.5 text-xs text-amber-200">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Upcoming Series Broadcast ({tv.first_air_date?.slice(0, 4) || "Unreleased"}):</strong> This series has not yet aired or premiered. Streams from external server scrapers may contain placeholder teasers or dummy content.
+              </span>
+            </div>
+          )}
           <VideoPlayer
             routingKey={routingKey}
             routingTitle={`${tv.name} S${season}E${episode}`}

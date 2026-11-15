@@ -1509,4 +1509,205 @@ body:has(.home-hero) .media-shelf-heading p { margin-top:3px; font-size:10px; }
 .detail-page h2 { margin:36px 0 15px; color:#eef2f7; font-size:21px; }
 @media(max-width:640px) { .detail-page > div.relative { padding-top:23px; } .detail-page > div.relative > div.mt-6 { align-items:flex-start; padding:15px; } .detail-page > div.relative > div.mt-6 > img { width:115px; } .detail-page p { font-size:11px; } }
 
+/* ── Premium AethoFlix CleanStream Video.js Player Styling ── */
+#playerContainer,
+.cleanstream-player-container {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  background: #000 !important;
+  overflow: hidden !important;
+}
+
+video-player,
+video-skin {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+}
+
+video-player video,
+video-player hlsjs-video,
+video-skin video,
+video-skin hlsjs-video,
+.cleanstream-player-container video,
+.cleanstream-player-container hlsjs-video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  background: #000 !important;
+  outline: none !important;
+}
+
+.cleanstream-vjs.video-js {
+  width: 100% !important;
+  height: 100% !important;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  background-color: #000 !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+}
+
+.cleanstream-vjs .vjs-tech {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+/* Glassmorphic Centered Big Play Button */
+.cleanstream-vjs .vjs-big-play-button {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  border-radius: 50% !important;
+  width: 76px !important;
+  height: 76px !important;
+  line-height: 72px !important;
+  font-size: 34px !important;
+  background: rgba(229, 9, 20, 0.88) !important;
+  border: 2.5px solid rgba(255, 255, 255, 0.6) !important;
+  color: #fff !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  box-shadow: 0 12px 35px rgba(229, 9, 20, 0.55), 0 0 20px rgba(229, 9, 20, 0.3) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+}
+
+.cleanstream-vjs .vjs-big-play-button:hover,
+.cleanstream-vjs:hover .vjs-big-play-button {
+  background: #e50914 !important;
+  transform: translate(-50%, -50%) scale(1.1) !important;
+  box-shadow: 0 16px 45px rgba(229, 9, 20, 0.75), 0 0 30px rgba(229, 9, 20, 0.45) !important;
+}
+
+/* Sleek Dark Gradient Control Bar */
+.cleanstream-vjs .vjs-control-bar {
+  background: linear-gradient(180deg, transparent 0%, rgba(5, 7, 12, 0.45) 30%, rgba(3, 4, 8, 0.95) 100%) !important;
+  height: 54px !important;
+  padding: 0 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  transition: opacity 0.3s ease, visibility 0.3s ease !important;
+}
+
+/* Red Progress Scrubber */
+.cleanstream-vjs .vjs-progress-control {
+  position: absolute !important;
+  left: 12px !important;
+  right: 12px !important;
+  top: -8px !important;
+  width: auto !important;
+  height: 14px !important;
+}
+
+.cleanstream-vjs .vjs-progress-control .vjs-progress-holder {
+  height: 4px !important;
+  margin: 0 !important;
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-radius: 4px !important;
+  transition: height 0.15s ease !important;
+}
+
+.cleanstream-vjs .vjs-progress-control:hover .vjs-progress-holder {
+  height: 7px !important;
+}
+
+.cleanstream-vjs .vjs-play-progress {
+  background: linear-gradient(90deg, #ff1744 0%, #e50914 100%) !important;
+  border-radius: 4px !important;
+}
+
+.cleanstream-vjs .vjs-play-progress:before {
+  font-size: 13px !important;
+  color: #fff !important;
+  top: -4px !important;
+  box-shadow: 0 0 10px rgba(229, 9, 20, 0.8) !important;
+  transition: transform 0.15s ease !important;
+}
+
+.cleanstream-vjs .vjs-progress-control:hover .vjs-play-progress:before {
+  transform: scale(1.3) !important;
+}
+
+/* Volume Slider */
+.cleanstream-vjs .vjs-volume-panel .vjs-volume-control {
+  background-color: transparent !important;
+}
+
+.cleanstream-vjs .vjs-volume-bar {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-radius: 3px !important;
+}
+
+.cleanstream-vjs .vjs-volume-level {
+  background: #e50914 !important;
+  border-radius: 3px !important;
+}
+
+/* Modern Control Icons & Buttons */
+.cleanstream-vjs .vjs-button {
+  color: rgba(255, 255, 255, 0.85) !important;
+  transition: color 0.15s ease, transform 0.15s ease !important;
+}
+
+.cleanstream-vjs .vjs-button:hover {
+  color: #ffffff !important;
+  transform: scale(1.08) !important;
+}
+
+.cleanstream-vjs .vjs-time-control {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 11px !important;
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+  padding: 0 4px !important;
+}
+
+/* Playback Rate Menu */
+.cleanstream-vjs .vjs-playback-rate .vjs-playback-rate-value {
+  font-family: ui-monospace, SFMono-Regular, monospace !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #f1f5f9 !important;
+  line-height: 54px !important;
+}
+
+.cleanstream-vjs .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
+  background: rgba(15, 17, 26, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+  backdrop-filter: blur(12px) !important;
+  padding: 4px !important;
+}
+
+.cleanstream-vjs .vjs-menu-item {
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  padding: 6px 12px !important;
+}
+
+.cleanstream-vjs .vjs-menu-item.vjs-selected {
+  background-color: rgba(229, 9, 20, 0.3) !important;
+  color: #ff4d5a !important;
+}
+
+/* Loading Spinner */
+.cleanstream-vjs .vjs-loading-spinner {
+  border-color: rgba(229, 9, 20, 0.85) transparent transparent transparent !important;
+  border-width: 3.5px !important;
+  width: 52px !important;
+  height: 52px !important;
+  margin-top: -26px !important;
+  margin-left: -26px !important;
+}
+
 

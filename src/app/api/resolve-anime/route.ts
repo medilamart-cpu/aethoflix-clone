@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         playable: fullStreamUrl,
-        label: "⚡ ReCloud Direct HLS (Video.js)",
+        label: "Direct HLS (Video.js)",
         type: "hls",
         tracks: data?.tracks || [],
       });

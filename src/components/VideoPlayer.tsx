@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Play, RefreshCw, Loader2, ShieldCheck, ShieldAlert, Zap, Maximize, Minimize, X, Activity } from "lucide-react";
+import { Play, RefreshCw, ShieldCheck, ShieldAlert, Zap, X } from "lucide-react";
 import { MirrorPicker } from "./MirrorPicker";
 import { WatchGate } from "./WatchGate";
 import { isWatchGateEnabled } from "@/lib/watchgate";
 import { VideoJSPlayer } from "./VideoJSPlayer";
 import { VlcButton } from "./VlcButton";
-import { raceCandidateMirrors, getHistoricallyFastest } from "@/lib/serverRacer";
-import { isProviderSandboxCompatible } from "@/lib/providers";
+import { raceCandidateMirrors } from "@/lib/serverRacer";
 
 interface VideoPlayerProps {
   routingKey: string; // "movie:1400940"
@@ -54,17 +53,19 @@ export function VideoPlayer({
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const userInteractedRef = useRef(false);
 
-  // Single-pass atomic server finalization:
-  // Resolves Direct CDN and verified available servers in parallel, then commits
-  // them in ONE single batch update. Prevents the server list from jumping/rearranging 2-3 times!
+  // Reset stream states immediately whenever the routingKey changes (new movie/episode)
+  useEffect(() => {
+    setDirectStream(null);
+    setSelectedMirror(null);
+    setVerifiedServers(null);
+    setIsFinalized(false);
+    setIframeError(false);
+    userInteractedRef.current = false;
+  }, [routingKey]);
+
+  // Single-pass server verification and ranking
   useEffect(() => {
     if (!routingKey) return;
-
-    // If already restored from cache, no rearrangement needed
-    if (initialCache) {
-      setIsFinalized(true);
-      return;
-    }
 
     const parts = routingKey.split(":");
     const type = parts[0];
@@ -75,24 +76,34 @@ export function VideoPlayer({
     let isMounted = true;
     setIsFinalized(false);
 
-    const directUrl =
-      type === "anime"
-        ? `/api/resolve-anime?id=${id}&s=${s}&e=${e}`
-        : `/api/resolve-tg?type=${type}&id=${id}${type === "tv" && s && e ? `&s=${s}&e=${e}` : ""}`;
+    // Direct stream resolution for anime and movies/TV (VidSync Direct CDN)
+    const directAnimeUrl =
+      type === "anime" ? `/api/resolve-anime?id=${id}&s=${s}&e=${e}` : "";
+
+    const directTgUrl =
+      type === "movie" || type === "tv"
+        ? `/api/resolve-tg?type=${type}&id=${id}&s=${s}&e=${e}`
+        : "";
 
     const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
 
     Promise.allSettled([
-      fetch(directUrl).then((r) => r.json()).catch(() => null),
+      directAnimeUrl ? fetch(directAnimeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+      directTgUrl ? fetch(directTgUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
       fetch(checkServersUrl).then((r) => r.json()).catch(() => null),
-    ]).then(([directRes, checkRes]) => {
+    ]).then(([animeRes, tgRes, checkRes]) => {
       if (!isMounted) return;
 
       let foundDirect: { url: string; label: string } | null = null;
-      if (directRes.status === "fulfilled" && directRes.value?.ok && directRes.value?.playable) {
+      if (animeRes.status === "fulfilled" && animeRes.value?.ok && animeRes.value?.playable) {
         foundDirect = {
-          url: directRes.value.playable,
-          label: type === "anime" ? "⚡ Direct Anime (Video.js)" : "⚡ Direct CDN (Video.js)",
+          url: animeRes.value.playable,
+          label: "Direct Anime (Video.js)",
+        };
+      } else if (tgRes.status === "fulfilled" && tgRes.value?.ok && tgRes.value?.playable) {
+        foundDirect = {
+          url: tgRes.value.playable,
+          label: "Direct CDN (VidSync)",
         };
       }
 
@@ -105,17 +116,16 @@ export function VideoPlayer({
           latMap[srv.label] = srv.latency;
         }
       } else {
-        // Fallback to default clean mirrors if probe fails
+        // Fallback to static mirrors if ping probe fails
         for (const [lbl, u] of Object.entries(mirrors)) {
-          if (!u.includes("tgvid.lovable.app") || !foundDirect) {
-            foundServers.push({ label: lbl, url: u, latency: 150 });
-          }
+          foundServers.push({ label: lbl, url: u, latency: 150 });
         }
       }
 
-      const defaultSelection = foundDirect ? foundDirect.label : (foundServers[0]?.label || null);
+      const defaultSelection = foundDirect
+        ? foundDirect.label
+        : (foundServers[0]?.label || Object.keys(mirrors)[0] || null);
 
-      // Single atomic batch update - renders directly in finalized state!
       setDirectStream(foundDirect);
       setVerifiedServers(foundServers);
       setLatencies(latMap);
@@ -125,7 +135,6 @@ export function VideoPlayer({
       }
       setIsFinalized(true);
 
-      // Cache for instant 0ms future navigation
       try {
         sessionStorage.setItem(
           `aethoflix_final_servers_${routingKey}`,
@@ -144,32 +153,31 @@ export function VideoPlayer({
     };
   }, [routingKey, initialCache, mirrors]);
 
-  // Clean mirrors: Prioritize movie-specific verified working servers (dynamically numbered)
+  // Clean verified mirrors dictionary
   const cleanMirrors: Record<string, string> = useMemo(() => {
     if (verifiedServers && verifiedServers.length > 0) {
       const res: Record<string, string> = {};
-      for (const s of verifiedServers) {
-        res[s.label] = s.url;
+      for (const srv of verifiedServers) {
+        res[srv.label] = srv.url;
       }
       return res;
     }
+    return mirrors;
+  }, [verifiedServers, mirrors]);
 
+  // Combine direct stream (TG Vid Direct CDN / Anime Direct) with verified embed mirrors
+  const allMirrors: Record<string, string> = useMemo(() => {
     const res: Record<string, string> = {};
-    for (const [key, val] of Object.entries(mirrors)) {
-      if (val.includes("tgvid.lovable.app")) {
-        if (!directStream) res[key] = val;
-      } else {
-        res[key] = val;
+    if (directStream) {
+      res[directStream.label] = directStream.url;
+    }
+    for (const [key, val] of Object.entries(cleanMirrors)) {
+      if (directStream && (key.toLowerCase().includes("tg vid") || val.includes("tgvid"))) {
+        continue; // omit duplicate TG Vid iframe since Direct CDN is active
       }
+      res[key] = val;
     }
     return res;
-  }, [mirrors, directStream, verifiedServers]);
-
-  // Combine direct stream with mirror options (Direct CDN placed first)
-  const allMirrors: Record<string, string> = useMemo(() => {
-    return directStream
-      ? { [directStream.label]: directStream.url, ...cleanMirrors }
-      : cleanMirrors;
   }, [directStream, cleanMirrors]);
 
   const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
@@ -177,7 +185,7 @@ export function VideoPlayer({
   const [adShieldActive, setAdShieldActive] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Background health monitor: Only runs for auto-failover, does not re-shuffle finalized UI
+  // Background health monitor
   useEffect(() => {
     if (!isFinalized || Object.keys(cleanMirrors).length === 0) return;
 
@@ -194,12 +202,11 @@ export function VideoPlayer({
     };
   }, [isFinalized, cleanMirrors]);
 
-  // Auto-failover: If current server fails, immediately promote the next fastest responding mirror
+  // Auto-failover: If current mirror fails, switch to next fastest mirror
   const handleAutoFailover = useCallback(() => {
     const candidates = mirrorKeys.filter((k) => k !== selectedMirror);
     if (candidates.length === 0) return;
 
-    // Rank candidates by measured ping response time
     const sorted = [...candidates].sort((a, b) => {
       const latA = latencies[a] ?? 9999;
       const latB = latencies[b] ?? 9999;
@@ -207,7 +214,7 @@ export function VideoPlayer({
     });
 
     const nextFastest = sorted[0];
-    setAutoSwitchNotice(`⚡ Server was unresponsive. Auto-switched to fastest backup: ${nextFastest}!`);
+    setAutoSwitchNotice(`Server was unresponsive. Switched to backup: ${nextFastest}`);
     setTimeout(() => setAutoSwitchNotice(null), 4000);
     setSelectedMirror(nextFastest);
     setIframeError(false);
@@ -216,8 +223,6 @@ export function VideoPlayer({
   const [blockedAdsCount, setBlockedAdsCount] = useState(0);
 
   // Stealth Ad Shield: Neutralizes rogue popup storms and tab redirects
-  // Providers like Vidrift check: if (!window.open() || win.closed) throw "Remove sandboxing"
-  // Returning a realistic stub window satisfies this check without opening any real window/tab.
   useEffect(() => {
     if (!adShieldActive) return;
 
@@ -227,7 +232,6 @@ export function VideoPlayer({
       console.info("[Ad Shield] Prevented unwanted popup window:", ...args);
       setBlockedAdsCount((c) => c + 1);
 
-      // Return realistic stub Window object to deceive sandbox/popup detection
       const stubWindow: any = {
         closed: false,
         focus: () => {},
@@ -243,7 +247,6 @@ export function VideoPlayer({
       return stubWindow;
     };
 
-    // Ensure toString() returns standard native code signature
     try {
       Object.defineProperty(stealthOpen, "toString", {
         value: () => "function open() { [native code] }",
@@ -267,12 +270,10 @@ export function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Cross-platform fullscreen toggle
-  // Supports native iOS Safari <video> fullscreen, standard HTML5 Fullscreen API, and CSS pseudo-fullscreen.
   const toggleFullscreen = useCallback(async () => {
     const container = viewportRef.current;
     if (!container) return;
 
-    // 1. If currently in fullscreen mode, exit it
     if (isFullscreen || document.fullscreenElement || (document as any).webkitFullscreenElement) {
       if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
         try {
@@ -288,7 +289,6 @@ export function VideoPlayer({
       return;
     }
 
-    // 2. Try native <video> element WebKit fullscreen on iOS Safari / iPad
     const videoEl = container.querySelector("video");
     if (videoEl && (videoEl as any).webkitEnterFullscreen && !document.fullscreenEnabled) {
       try {
@@ -300,7 +300,6 @@ export function VideoPlayer({
       }
     }
 
-    // 3. Try standard HTML5 Fullscreen API (Windows, Mac, Android Chrome)
     const canNativeFs =
       document.fullscreenEnabled ||
       (document as any).webkitFullscreenEnabled ||
@@ -322,7 +321,6 @@ export function VideoPlayer({
       }
     }
 
-    // 4. Viewport fallback (iOS Safari / mobile WebKit for iframes)
     setIsFullscreen(true);
     document.body.style.overflow = "hidden";
     try {
@@ -330,7 +328,6 @@ export function VideoPlayer({
     } catch {}
   }, [isFullscreen]);
 
-  // Sync state when exiting fullscreen via Escape key or mobile gestures
   useEffect(() => {
     const handleFsChange = () => {
       const isNativeFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
@@ -371,30 +368,20 @@ export function VideoPlayer({
 
   const url = selectedMirror ? allMirrors[selectedMirror] : mirrorKeys[0] ? allMirrors[mirrorKeys[0]] : null;
 
-  // Intercept any TG Vid mirror so it NEVER loads the ad-infested tgvid.lovable.app iframe!
-  const isTgVidMirror = !!(selectedMirror?.includes("TG Vid") || url?.includes("tgvid.lovable.app"));
-
-  // Determine if the selected source is a direct stream suitable for Video.js
+  // Determine if the selected source is a direct stream (e.g. for anime)
   const isDirectStream =
-    (url &&
-      (url.endsWith(".m3u8") ||
-        url.endsWith(".mp4") ||
-        url.includes(".m3u8?") ||
-        url.includes(".mp4?") ||
-        url.includes("/api/out?") ||
-        url.startsWith("direct:"))) ||
-    (isTgVidMirror && !!directStream);
+    url &&
+    (url.endsWith(".m3u8") ||
+      url.endsWith(".mp4") ||
+      url.includes(".m3u8?") ||
+      url.includes(".mp4?") ||
+      url.startsWith("direct:"));
 
-  const directStreamUrl =
-    isTgVidMirror && directStream
-      ? directStream.url
-      : url?.replace(/^direct:/, "") || "";
-
-  const activeStreamUrl = (isDirectStream && directStreamUrl) ? directStreamUrl : (directStream?.url || null);
+  const directStreamUrl = url?.replace(/^direct:/, "") || "";
 
   return (
     <div className="media-video-player flex flex-col gap-3">
-      {/* Video Viewport (Supports Native & Mobile Viewport Fullscreen) */}
+      {/* Video Viewport */}
       <div
         ref={viewportRef}
         className={`relative w-full bg-black transition-all ${
@@ -403,7 +390,6 @@ export function VideoPlayer({
             : "aspect-video overflow-hidden rounded-xl border border-white/10 shadow-2xl"
         }`}
       >
-        {/* Floating Close Button for Mobile Pseudo-Fullscreen */}
         {isFullscreen && (
           <button
             type="button"
@@ -426,13 +412,13 @@ export function VideoPlayer({
 
         {/* Auto-Switch Notice Toast */}
         {autoSwitchNotice && (
-          <div className="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg bg-indigo-600/90 backdrop-blur-md border border-indigo-400/40 px-3 py-1.5 text-xs text-white shadow-xl animate-in fade-in slide-in-from-top-2">
-            <Zap className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+          <div className="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg bg-neutral-900/90 backdrop-blur-md border border-white/15 px-3 py-1.5 text-xs text-white shadow-xl">
+            <Zap className="h-3.5 w-3.5 text-cyan-400" />
             <span>{autoSwitchNotice}</span>
           </div>
         )}
 
-        {/* 1. Direct CDN Player with Video.js (0 ads, 0 popups, 100% mobile fullscreen) */}
+        {/* 1. Direct Stream Player with HLS.js (for anime direct HLS) */}
         {url && isDirectStream && (
           <VideoJSPlayer
             key={`vjs-${directStreamUrl}-${reloadKey}`}
@@ -448,48 +434,36 @@ export function VideoPlayer({
           />
         )}
 
-        {/* 2. Resolving TG Direct Stream State (Prevents ever falling back to ad-infested iframe) */}
-        {isTgVidMirror && !directStream && !iframeError && (
-          <div className="flex h-full w-full items-center justify-center bg-black">
-            <div className="text-center px-6">
-              <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-400" />
-              <p className="mt-3 text-sm text-neutral-300 font-medium">Connecting Direct Ad-Free Stream...</p>
-              <p className="mt-1 text-xs text-neutral-500">Bypassing iframe ads and initializing mobile player</p>
-            </div>
-          </div>
-        )}
-
-        {/* 3. Error Fallback State with Auto-Failover to Fastest Server */}
+        {/* 2. Error Fallback State with Auto-Failover to Fastest Server */}
         {url && iframeError && (
           <div className="flex h-full w-full items-center justify-center bg-black">
             <div className="text-center px-6">
-              <p className="text-sm text-red-400">This server couldn&apos;t load or is blocked in your area.</p>
+              <p className="text-sm text-neutral-300">This server is temporarily unavailable or blocked.</p>
               <div className="mt-3 flex items-center justify-center gap-2">
                 <button
                   onClick={handleAutoFailover}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-500 transition-all cursor-pointer font-medium shadow-md shadow-amber-600/20"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs text-white hover:bg-cyan-500 transition-all cursor-pointer font-medium"
                 >
-                  <Zap className="h-3.5 w-3.5" /> Jump to Fastest Server
+                  <Zap className="h-3.5 w-3.5" /> Jump to Next Server
                 </button>
                 <button
                   onClick={handleReload}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3.5 py-1.5 text-xs text-white hover:bg-white/20 transition-all cursor-pointer"
                 >
-                  <RefreshCw className="h-3.5 w-3.5" /> Retry Current
+                  <RefreshCw className="h-3.5 w-3.5" /> Retry
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 4. Embed Player (Sandbox Removed to Eliminate "Please Disable Sandbox" on Servers 1, 5, 7, etc.) */}
-        {url && !isDirectStream && !iframeError && !isTgVidMirror && (
+        {/* 3. Embed Player (Clean Iframe + Stealth Ad Shield) */}
+        {url && !isDirectStream && !iframeError && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}
             title={`${routingTitle} — ${selectedMirror}`}
             className="h-full w-full border-0 bg-black"
-            sandbox={undefined}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
             allowFullScreen={true}
             {...({
@@ -507,7 +481,7 @@ export function VideoPlayer({
         )}
       </div>
 
-      {/* Control bar: Servers + Status Bar */}
+      {/* Server Selection & Action Bar */}
       <div className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <MirrorPicker
@@ -523,43 +497,36 @@ export function VideoPlayer({
             }}
           />
 
-          {/* Ad-Shield, Reload & Fullscreen Actions */}
+          {/* Ad-Shield, Reload & External Player Actions */}
           <div className="flex items-center gap-2">
-            {isDirectStream ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
-                <Zap className="h-3 w-3" /> Direct CDN (Video.js)
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setAdShieldActive(!adShieldActive)}
-                title="Stealth Mode: Prevents rogue popup storms and redirects in top window without sandbox errors"
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-                  adShieldActive
-                    ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25"
-                    : "bg-white/5 border-white/15 text-neutral-400 hover:text-white"
-                }`}
-              >
-                {adShieldActive ? (
-                  <>
-                    <ShieldCheck className="h-3 w-3 text-indigo-400" />
-                    <span>
-                      Ad Shield Active
-                      {blockedAdsCount > 0 ? ` (${blockedAdsCount})` : ""}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="h-3 w-3 text-neutral-400" /> Ad Shield Off
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setAdShieldActive(!adShieldActive)}
+              title="Stealth Mode: Prevents rogue popup storms and redirects in top window"
+              className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                adShieldActive
+                  ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20"
+                  : "bg-white/5 border-white/15 text-neutral-400 hover:text-white"
+              }`}
+            >
+              {adShieldActive ? (
+                <>
+                  <ShieldCheck className="h-3 w-3 text-cyan-400" />
+                  <span>
+                    Ad Shield Active
+                    {blockedAdsCount > 0 ? ` (${blockedAdsCount})` : ""}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-3 w-3 text-neutral-400" /> Ad Shield Off
+                </>
+              )}
+            </button>
 
-            {/* Stream in VLC & External Players */}
-            {activeStreamUrl && (
+            {isDirectStream && (
               <VlcButton
-                streamUrl={activeStreamUrl}
+                streamUrl={directStreamUrl}
                 title={routingTitle}
                 compact={true}
               />
@@ -574,47 +541,19 @@ export function VideoPlayer({
               <RefreshCw className="h-3 w-3" />
             </button>
 
-            {/* Cross-platform Fullscreen Button (Solves mobile iframe fullscreen restrictions) */}
             <button
               type="button"
               onClick={toggleFullscreen}
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen (Mobile Friendly)"}
-              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-neutral-300 hover:border-white/20 hover:text-white transition-colors cursor-pointer"
+              title="Toggle Fullscreen"
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-neutral-400 hover:border-white/20 hover:text-white transition-colors cursor-pointer"
             >
-              {isFullscreen ? (
-                <>
-                  <Minimize className="h-3 w-3" />
-                  <span className="hidden sm:inline">Exit Fullscreen</span>
-                </>
-              ) : (
-                <>
-                  <Maximize className="h-3 w-3" />
-                  <span className="hidden sm:inline">Fullscreen</span>
-                </>
-              )}
+              <Zap className="h-3 w-3" /> Fullscreen
             </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-3 w-3" />
-            <span>
-              {isDirectStream
-                ? "Streaming ad-free directly via high-speed CDN in native Video.js."
-                : verifiedServers
-                ? `${verifiedServers.length} servers verified available for this title.`
-                : "Checking server availability for this title..."}
-            </span>
-          </div>
-          {fastestLabel && latencies[fastestLabel] && (
-            <div className="flex items-center gap-1 font-medium text-emerald-400">
-              <Zap className="h-3 w-3" />
-              <span>Fastest: {fastestLabel} ({latencies[fastestLabel]}ms)</span>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
+
+export default VideoPlayer;

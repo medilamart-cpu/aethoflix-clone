@@ -1,47 +1,207 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+interface VidSyncSource {
+  id?: string;
+  provider?: { id: string; name: string };
+  server?: string;
+  url?: string;
+  rawUrl?: string;
+  directUrl?: string;
+  fallbackProxyUrl?: string;
+  type?: string;
+  quality?: string;
+  availableQualities?: string[];
+  audioLanguage?: string;
+  audio?: string;
+  language?: string;
+  audioLabel?: string;
+  audioTracks?: Array<{ language: string; label: string; original?: boolean }>;
+  subtitles?: Array<{ label?: string; lang?: string; url?: string }>;
+}
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type") || "movie";
-  const id = searchParams.get("id");
-  const s = searchParams.get("s");
-  const e = searchParams.get("e");
+// VidSync distributed Cloudflare Worker shards
+const VIDSYNC_WORKER_SHARDS = [
+  "https://vidsync-shard.vs-sharaparvin76.workers.dev",
+  "https://vidsync-shard.vidsync-hilsonkim83864.workers.dev",
+  "https://vidsync-shard.islammehedi149.workers.dev",
+  "https://vidsync-shard.vidsync-lelouch8899.workers.dev",
+  "https://vidsync-shard.vidsync-doraemon891299.workers.dev",
+  "https://vidsync-shard.vs-msmasumsarkar1.workers.dev",
+  "https://vidsync-shard.vs-islammehedi1210.workers.dev",
+  "https://vidsync-shard.vs-mehedisarkar980.workers.dev",
+  "https://vidsync-shard.vs-tanjilaakter12311.workers.dev",
+  "https://vidsync-shard.vs-jhonbro2710.workers.dev",
+  "https://vidsync-shard.vs-mehedisarkar662.workers.dev",
+  "https://vidsync-shard.vs-sailormoon4099.workers.dev",
+  "https://vidsync-shard.vs-muniraparveen72.workers.dev",
+  "https://vidsync-shard.vs-islammehedi625.workers.dev",
+  "https://vidsync-shard.vs-mehedi2099.workers.dev",
+  "https://vidsync-shard.vs-mikami3000.workers.dev",
+  "https://vidsync-shard.vs-ershadali1412.workers.dev",
+  "https://vidsync-shard.vs-xdoroka.workers.dev",
+  "https://vidsync-shard.vs-mehedisarkar51.workers.dev",
+  "https://vidsync-shard.vs-deals3.workers.dev",
+  "https://vidsync-shard.vs-deals.workers.dev",
+  "https://vidsync-shard.vs-deals2.workers.dev",
+  "https://vidsync-shard.vs-weeklyxplus2026jlo.workers.dev",
+  "https://vidsync-shard.vs-admin.workers.dev",
+  "https://vidsync-shard.vs-deals4.workers.dev",
+  "https://vidsync-shard.vs-deals13.workers.dev",
+  "https://vidsync-shard.vs-deals7.workers.dev",
+  "https://vidsync-shard.vs-deals6.workers.dev",
+  "https://vidsync-shard.vs-deals5.workers.dev",
+  "https://vidsync-shard.vs-deals10.workers.dev",
+  "https://vidsync-shard.vs-deals11.workers.dev",
+  "https://vidsync-shard.vs-deals9.workers.dev",
+  "https://vidsync-shard.vs-deals8.workers.dev",
+  "https://vidsync-shard.vs-deals12.workers.dev",
+  "https://vidsync-shard.vs-deals15.workers.dev",
+  "https://vidsync-shard.vs-deals16.workers.dev",
+  "https://vidsync-shard.vs-deals18.workers.dev",
+  "https://vidsync-shard.vs-deals14.workers.dev",
+  "https://vidsync-shard.vs-deals17.workers.dev",
+  "https://vidsync-shard.vs-deals20.workers.dev",
+  "https://vidsync-shard.vs-deals47.workers.dev",
+  "https://vidsync-shard.vs-deals60.workers.dev",
+  "https://vidsync-shard.vs-deals80.workers.dev",
+];
 
-  if (!id) {
-    return NextResponse.json({ ok: false, error: "Missing ID" }, { status: 400 });
+// FNV-1a hash algorithm matching VidSync client implementation
+function fnv1a(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 16777619);
   }
+  return Math.abs(h);
+}
 
-  const endpoint =
-    type === "tv" && s && e
-      ? `https://tgvidapi.lovable.app/api/tv/${id}/${s}/${e}`
-      : `https://tgvidapi.lovable.app/api/m/${id}`;
+function getShard(key: string, retryOffset: number = 0): string {
+  const idx = (fnv1a(key) + retryOffset) % VIDSYNC_WORKER_SHARDS.length;
+  return VIDSYNC_WORKER_SHARDS[idx];
+}
 
+async function verifyPlayable(url: string): Promise<boolean> {
   try {
-    const res = await fetch(endpoint, {
-      headers: { accept: "application/json" },
-      next: { revalidate: 3600 },
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Range: "bytes=0-100",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(3000),
+    });
+    return res.ok && res.status < 400;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type") || "movie";
+    const id = searchParams.get("id");
+    const season = searchParams.get("s") || searchParams.get("season") || "1";
+    const episode = searchParams.get("e") || searchParams.get("episode") || "1";
+
+    if (!id) {
+      return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
+    }
+
+    const key = `${type}-${id}-${season}-${episode}`;
+    let candidateSources: VidSyncSource[] = [];
+
+    // Query VidSync Cloudflare Worker shard cluster with 3 retry offsets
+    for (let offset = 0; offset < 3; offset++) {
+      const shard = getShard(key, offset);
+      const queryParams = new URLSearchParams({
+        type,
+        id,
+        season,
+        episode,
+        _t: String(Date.now()),
+      });
+
+      try {
+        const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
+          headers: {
+            Origin: "https://vidsync.pro",
+            Referer: "https://vidsync.pro/",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(3500),
+        });
+
+        if (!res.ok) continue;
+        const text = await res.text();
+        if (!text.startsWith("{")) continue;
+
+        const data = JSON.parse(text);
+        if (Array.isArray(data?.sources) && data.sources.length > 0) {
+          candidateSources = data.sources;
+          break;
+        }
+      } catch {
+        // Retry next shard
+      }
+    }
+
+    // Sort to prioritize English/Original, then higher quality
+    candidateSources.sort((a, b) => {
+      const aIsEn = a.audio === "en" || a.audioLanguage === "en" ? 1 : 0;
+      const bIsEn = b.audio === "en" || b.audioLanguage === "en" ? 1 : 0;
+      if (aIsEn !== bIsEn) return bIsEn - aIsEn;
+      return 0;
     });
 
-    if (!res.ok) {
-      return NextResponse.json({ ok: false, error: `HTTP ${res.status}` }, { status: res.status });
+    // Check candidate stream URLs for active 200 HTTP response
+    for (const source of candidateSources) {
+      const streamUrls = [source.directUrl, source.rawUrl, source.url, source.fallbackProxyUrl].filter(
+        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)
+      );
+
+      for (const url of streamUrls) {
+        // Filter out dummy preview clips, trailers, samples, and mislabeled teasers
+        const lowerUrl = url.toLowerCase();
+        if (
+          lowerUrl.includes("preview") ||
+          lowerUrl.includes("_preview_") ||
+          lowerUrl.includes("trailer") ||
+          lowerUrl.includes("sample")
+        ) {
+          continue;
+        }
+
+        const isOk = await verifyPlayable(url);
+        if (isOk) {
+          return NextResponse.json({
+            ok: true,
+            playable: url,
+            type: "hls",
+            label: "Direct CDN (VidSync)",
+            quality: source.quality || "1080p",
+            audio: source.audio || source.audioLanguage || "en",
+            subtitles: source.subtitles || [],
+            availableCount: candidateSources.length,
+          });
+        }
+      }
     }
 
-    const data = await res.json();
-    const link = data?.links?.[0];
-
-    if (link && link.url) {
-      return NextResponse.json({
-        ok: true,
-        playable: link.url,
-        label: link.label || "TG Direct HLS 1080p",
-        type: link.type || "hls",
-      });
-    }
-
-    return NextResponse.json({ ok: false, error: "No direct links found" }, { status: 404 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Direct CDN stream currently unavailable",
+        candidateCount: candidateSources.length,
+      },
+      { status: 404 }
+    );
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err?.message || "Internal error resolving Direct CDN" },
+      { status: 500 }
+    );
   }
 }

@@ -10,10 +10,34 @@ interface CandidateProvider {
 
 const CANDIDATE_PROVIDERS: CandidateProvider[] = [
   {
+    id: "embedwave",
+    provider: "EmbedWave",
+    buildUrl: (id, s, e) =>
+      s && e ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true` : `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+  },
+  {
+    id: "vidcore",
+    provider: "VidCore",
+    buildUrl: (id, s, e) =>
+      s && e ? `https://vidcore.org/embed/tv/${id}/${s}/${e}` : `https://vidcore.org/embed/movie/${id}`,
+  },
+  {
+    id: "vidnest",
+    provider: "VidNest",
+    buildUrl: (id, s, e) =>
+      s && e ? `https://vidnest.pro/tv/${id}/${s}/${e}` : `https://vidnest.pro/movie/${id}`,
+  },
+  {
     id: "vidlink",
     provider: "VidLink",
     buildUrl: (id, s, e) =>
       s && e ? `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true` : `https://vidlink.pro/movie/${id}?autoplay=true`,
+  },
+  {
+    id: "videasy",
+    provider: "Videasy",
+    buildUrl: (id, s, e) =>
+      s && e ? `https://player.videasy.to/tv/${id}/${s}/${e}` : `https://player.videasy.to/movie/${id}`,
   },
   {
     id: "vidfast",
@@ -28,22 +52,16 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
       s && e ? `https://zxcstream.cc/player/tv/${id}?season=${s}&episode=${e}` : `https://zxcstream.cc/player/movie/${id}`,
   },
   {
-    id: "vidstuck",
-    provider: "VidStuck",
+    id: "vidrock",
+    provider: "VidRock",
     buildUrl: (id, s, e) =>
-      s && e ? `https://vidstuck.cc/embed/tv/${id}/${s}/${e}?color=ffffff` : `https://vidstuck.cc/embed/movie/${id}?color=ffffff`,
+      s && e ? `https://vidrock.net/embed/tv/${id}/${s}/${e}` : `https://vidrock.net/embed/movie/${id}`,
   },
   {
-    id: "bingr",
-    provider: "Bingr",
+    id: "vidnest",
+    provider: "VidNest",
     buildUrl: (id, s, e) =>
-      s && e ? `https://bingr.one/watch/tv/${id}/${s}/${e}` : `https://bingr.one/watch/movie/${id}`,
-  },
-  {
-    id: "nxsha",
-    provider: "Nxsha",
-    buildUrl: (id, s, e) =>
-      s && e ? `https://nxsha.space/embed/tv/${id}/${s}/${e}` : `https://nxsha.space/embed/movie/${id}`,
+      s && e ? `https://vidnest.pro/tv/${id}/${s}/${e}` : `https://vidnest.pro/movie/${id}`,
   },
   {
     id: "vidsrc",
@@ -117,9 +135,12 @@ export async function GET(req: NextRequest) {
   // Sort available servers by actual response latency
   availableServers.sort((a, b) => a.latency - b.latency);
 
-  // Dynamically assign sequential Server numbers (Server 1, Server 2...)
+  // Dynamically assign sequential Server numbers (Server 1, Server 2...) on live site,
+  // or original provider names in local development
+  const isDev = process.env.NODE_ENV !== "production";
+
   const servers = availableServers.map((s, idx) => ({
-    label: `Server ${idx + 1} (${s.provider})`,
+    label: isDev ? s.provider : `Server ${idx + 1}`,
     shortLabel: `Server ${idx + 1}`,
     id: s.id,
     provider: s.provider,

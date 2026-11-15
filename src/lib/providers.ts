@@ -69,47 +69,58 @@ export interface StreamingProvider {
 export const STREAMING_PROVIDERS: StreamingProvider[] = [
   {
     label: "Server 1",
+    provider: "EmbedWave",
+    base_url: "https://embedwave.cc",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`,
+  },
+  {
+    label: "Server 2",
+    provider: "VidCore",
+    base_url: "https://vidcore.org",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://vidcore.org/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    label: "Server 3",
+    provider: "VidNest",
+    base_url: "https://vidnest.pro",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://vidnest.pro/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidnest.pro/tv/${id}/${s}/${e}`,
+  },
+  {
+    label: "Server 4",
     provider: "VidLink",
     base_url: "https://vidlink.pro",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://vidlink.pro/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
+    build_movie: (id) => `https://vidlink.pro/movie/${id}?autoplay=true`,
+    build_tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true`,
   },
   {
-    label: "Server 2",
-    provider: "VidSrc",
-    base_url: "https://vidsrc.pm",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: false, // Detects sandbox and shows anti-sandbox screen
-    build_movie: (id) => `https://vidsrc.pm/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 3",
-    provider: "TG Vid",
-    base_url: "https://tgvid.lovable.app",
+    label: "Server 4",
+    provider: "Videasy",
+    base_url: "https://player.videasy.to",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://tgvid.lovable.app/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://tgvid.lovable.app/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 4",
-    provider: "VidStuck",
-    base_url: "https://vidstuck.cc",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: false, // Requires local cookies & storage
-    build_movie: (id) => `https://vidstuck.cc/embed/movie/${id}?color=ffffff`,
-    build_tv: (id, s, e) => `https://vidstuck.cc/embed/tv/${id}/${s}/${e}?color=ffffff`,
+    build_movie: (id) => `https://player.videasy.to/movie/${id}`,
+    build_tv: (id, s, e) => `https://player.videasy.to/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 5",
@@ -124,14 +135,14 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   },
   {
     label: "Server 6",
-    provider: "2Embed",
-    base_url: "https://www.2embed.cc",
+    provider: "VidRock",
+    base_url: "https://vidrock.net",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
-    sandbox_compatible: false, // Detects sandbox and shows error
-    build_movie: (id) => `https://www.2embed.cc/embed/${id}`,
-    build_tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://vidrock.net/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidrock.net/embed/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 7",
@@ -146,47 +157,47 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   },
   {
     label: "Server 8",
-    provider: "Nxsha",
-    base_url: "https://nxsha.space",
+    provider: "VidNest",
+    base_url: "https://vidnest.pro",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://nxsha.space/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://nxsha.space/embed/tv/${id}/${s}/${e}`,
+    build_movie: (id) => `https://vidnest.pro/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidnest.pro/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 9",
-    provider: "Bingr",
-    base_url: "https://bingr.one",
+    provider: "2Embed",
+    base_url: "https://www.2embed.cc",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
-    sandbox_compatible: false, // Cloudflare Turnstile verification fails in sandbox
-    build_movie: (id) => `https://bingr.one/watch/movie/${id}`,
-    build_tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
+    sandbox_compatible: false,
+    build_movie: (id) => `https://www.2embed.cc/embed/${id}`,
+    build_tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
     label: "Server 10",
-    provider: "AutoEmbed",
-    base_url: "https://player.autoembed.cc",
+    provider: "VidSrc",
+    base_url: "https://vidsrc.pm",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: false,
-    build_movie: (id) => `https://player.autoembed.cc/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
+    build_movie: (id) => `https://vidsrc.pm/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 11",
-    provider: "EmbedSU",
-    base_url: "https://embed.su",
+    provider: "VidSrc",
+    base_url: "https://vidsrc.pm",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: false,
-    build_movie: (id) => `https://embed.su/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`,
+    build_movie: (id) => `https://vidsrc.pm/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`,
   },
 ];
 
@@ -198,6 +209,92 @@ export function isProviderSandboxCompatible(urlOrLabel: string): boolean {
   );
   // Default to false for third-party embeds unless explicitly known to tolerate sandboxing
   return match?.sandbox_compatible ?? false;
+}
+
+/**
+ * Resolves the genuine original server / provider name for a given URL or label.
+ * E.g.: "https://vidlink.pro/..." -> "VidLink", "https://vidfast.vc/..." -> "VidFast"
+ */
+export function getProviderOriginalName(urlOrLabel: string): string | null {
+  if (!urlOrLabel) return null;
+
+  if (
+    urlOrLabel.toLowerCase().includes("vidsync") ||
+    urlOrLabel.toLowerCase().includes("tg vid") ||
+    urlOrLabel.toLowerCase().includes("tgvid") ||
+    urlOrLabel.includes("hscow") ||
+    urlOrLabel.includes("fcxmb")
+  ) {
+    if (
+      urlOrLabel.startsWith("direct:") ||
+      urlOrLabel.endsWith(".m3u8") ||
+      urlOrLabel.endsWith(".mp4") ||
+      urlOrLabel.includes(".m3u8?") ||
+      urlOrLabel.includes(".mp4?") ||
+      urlOrLabel.toLowerCase().includes("direct")
+    ) {
+      return "Direct CDN (VidSync)";
+    }
+    return "VidSync";
+  }
+
+  if (
+    urlOrLabel.startsWith("direct:") ||
+    urlOrLabel.endsWith(".m3u8") ||
+    urlOrLabel.endsWith(".mp4") ||
+    urlOrLabel.includes(".m3u8?") ||
+    urlOrLabel.includes(".mp4?") ||
+    urlOrLabel.toLowerCase().includes("direct")
+  ) {
+    return "Direct Stream";
+  }
+
+  // Check known movie / TV providers
+  for (const prov of STREAMING_PROVIDERS) {
+    const domain = prov.base_url.replace("https://", "").replace("http://", "").replace("www.", "");
+    if (
+      urlOrLabel.includes(domain) ||
+      urlOrLabel.toLowerCase().includes(prov.provider.toLowerCase())
+    ) {
+      return prov.provider;
+    }
+  }
+
+  // Check anime providers
+  for (const prov of ANIME_STREAMING_PROVIDERS) {
+    const domain = prov.base_url.replace("https://", "").replace("http://", "").replace("www.", "");
+    if (
+      urlOrLabel.includes(domain) ||
+      urlOrLabel.toLowerCase().includes(prov.provider.toLowerCase())
+    ) {
+      return prov.provider;
+    }
+  }
+
+  // Additional signature matches
+  if (urlOrLabel.includes("tgvid")) return "TG Vid";
+  if (urlOrLabel.includes("vidlink")) return "VidLink";
+  if (urlOrLabel.includes("vidcore")) return "VidCore";
+  if (urlOrLabel.includes("videasy") || urlOrLabel.includes("videasy.to") || urlOrLabel.includes("videasy.me")) return "Videasy";
+  if (urlOrLabel.includes("vidrock") || urlOrLabel.includes("vidrock.net")) return "VidRock";
+  if (urlOrLabel.includes("embedwave") || urlOrLabel.includes("embedwave.cc")) return "EmbedWave";
+  if (urlOrLabel.includes("vidnest") || urlOrLabel.includes("vidnest.fun")) return "VidNest";
+  if (urlOrLabel.includes("vidsrc.pm") || urlOrLabel.toLowerCase().includes("vidsrc")) return "VidSrc";
+  if (urlOrLabel.includes("vidstuck.cc") || urlOrLabel.toLowerCase().includes("vidstuck")) return "VidStuck";
+  if (urlOrLabel.includes("vidfast.vc") || urlOrLabel.toLowerCase().includes("vidfast")) return "VidFast";
+  if (urlOrLabel.includes("2embed.cc") || urlOrLabel.toLowerCase().includes("2embed")) return "2Embed";
+  if (urlOrLabel.includes("zxcstream.cc") || urlOrLabel.toLowerCase().includes("zxcstream") || urlOrLabel.toLowerCase().includes("zxc")) return "ZXCStream";
+  if (urlOrLabel.includes("nxsha.space") || urlOrLabel.toLowerCase().includes("nxsha")) return "Nxsha";
+  if (urlOrLabel.includes("bingr.one") || urlOrLabel.toLowerCase().includes("bingr")) return "Bingr";
+  if (urlOrLabel.includes("autoembed.cc") || urlOrLabel.toLowerCase().includes("autoembed")) return "AutoEmbed";
+  if (urlOrLabel.includes("embed.su") || urlOrLabel.toLowerCase().includes("embedsu")) return "EmbedSU";
+  if (urlOrLabel.includes("megaplay.buzz") || urlOrLabel.toLowerCase().includes("megaplay")) return "MegaPlay";
+  if (urlOrLabel.includes("hd-1") || urlOrLabel.includes("recloud-1")) return "ReCloud HD 1";
+  if (urlOrLabel.includes("hd-2") || urlOrLabel.includes("recloud-2")) return "ReCloud HD 2";
+  if (urlOrLabel.includes("4animo.xyz") || urlOrLabel.toLowerCase().includes("recloud")) return "ReCloud";
+  if (urlOrLabel.includes("zokoanime.video") || urlOrLabel.toLowerCase().includes("zokoanime")) return "Zokoanime";
+
+  return null;
 }
 
 // ── Anime providers (AniList or MAL IDs) ─────────────────────────────────────
