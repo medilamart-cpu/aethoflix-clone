@@ -148,12 +148,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Sort to prioritize English/Original, then higher quality
+    // Intelligent audio ranking: prioritize English and original audio (Japanese for anime, etc.)
+    // strongly deprioritize third-party dubbed cam rips (ta, te) with ads
     candidateSources.sort((a, b) => {
-      const aIsEn = a.audio === "en" || a.audioLanguage === "en" ? 1 : 0;
-      const bIsEn = b.audio === "en" || b.audioLanguage === "en" ? 1 : 0;
-      if (aIsEn !== bIsEn) return bIsEn - aIsEn;
-      return 0;
+      const getScore = (s: VidSyncSource) => {
+        const lang = (s.audio || s.audioLanguage || "").toLowerCase();
+        if (lang === "en" || lang === "eng") return 100;
+        if (lang === "ja" || lang === "jpn" || lang === "ko" || lang === "kor") return 90;
+        if (s.audioTracks?.some((t) => t.original)) return 85;
+        if (lang === "es" || lang === "fr" || lang === "de") return 50;
+        if (lang === "hi") return 30;
+        if (lang === "ta" || lang === "te") return 10; // Low-tier dubbed rips with watermarks
+        return 40;
+      };
+      return getScore(b) - getScore(a);
     });
 
     // Check candidate stream URLs for active 200 HTTP response
