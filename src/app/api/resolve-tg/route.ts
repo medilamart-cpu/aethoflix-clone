@@ -102,50 +102,57 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "movie";
     const id = searchParams.get("id");
+    const imdb = searchParams.get("imdb") || searchParams.get("imdbId");
     const season = searchParams.get("s") || searchParams.get("season") || "1";
     const episode = searchParams.get("e") || searchParams.get("episode") || "1";
 
-    if (!id) {
+    if (!id && !imdb) {
       return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
     }
 
-    const key = `${type}-${id}-${season}-${episode}`;
+    const queryIds = [id, imdb].filter(Boolean) as string[];
     let candidateSources: VidSyncSource[] = [];
 
-    // Query VidSync Cloudflare Worker shard cluster with 3 retry offsets
-    for (let offset = 0; offset < 3; offset++) {
-      const shard = getShard(key, offset);
-      const queryParams = new URLSearchParams({
-        type,
-        id,
-        season,
-        episode,
-        _t: String(Date.now()),
-      });
+    // Query VidSync Cloudflare Worker shard cluster with both TMDb and IMDb IDs
+    for (const currentId of queryIds) {
+      const key = `${type}-${currentId}-${season}-${episode}`;
 
-      try {
-        const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
-          headers: {
-            Origin: "https://vidsync.pro",
-            Referer: "https://vidsync.pro/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          signal: AbortSignal.timeout(3500),
+      for (let offset = 0; offset < 3; offset++) {
+        const shard = getShard(key, offset);
+        const queryParams = new URLSearchParams({
+          type,
+          id: currentId,
+          season,
+          episode,
+          _t: String(Date.now()),
         });
 
-        if (!res.ok) continue;
-        const text = await res.text();
-        if (!text.startsWith("{")) continue;
+        try {
+          const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
+            headers: {
+              Origin: "https://vidsync.pro",
+              Referer: "https://vidsync.pro/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(3500),
+          });
 
-        const data = JSON.parse(text);
-        if (Array.isArray(data?.sources) && data.sources.length > 0) {
-          candidateSources = data.sources;
-          break;
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text.startsWith("{")) continue;
+
+          const data = JSON.parse(text);
+          if (Array.isArray(data?.sources) && data.sources.length > 0) {
+            candidateSources = data.sources;
+            break;
+          }
+        } catch {
+          // Retry next shard
         }
-      } catch {
-        // Retry next shard
       }
+
+      if (candidateSources.length > 0) break;
     }
 
     // Intelligent audio ranking: prioritize English and original audio (Japanese for anime, etc.)

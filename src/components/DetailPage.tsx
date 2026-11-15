@@ -52,6 +52,7 @@ export function MovieDetailPage({ movie }: MovieDetailPageProps) {
             routingTitle={movie.title}
             mirrors={mirrors}
             poster={backdropUrl(movie.backdrop_path, "w1280")}
+            imdbId={movie.imdb_id || undefined}
             adPartnerUrl1={AD_PARTNER_URL_1 || undefined}
             adPartnerUrl2={AD_PARTNER_URL_2 || undefined}
           />

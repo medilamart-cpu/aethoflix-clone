@@ -91,6 +91,7 @@ export interface Episode {
 
 export interface MovieDetail extends MovieListItem {
   runtime: number | null;
+  imdb_id?: string | null;
   genres: { id: number; name: string }[];
   similar: { results: MovieListItem[] };
 }

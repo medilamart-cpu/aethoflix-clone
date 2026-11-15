@@ -16,6 +16,7 @@ interface VideoPlayerProps {
   adPartnerUrl1?: string;
   adPartnerUrl2?: string;
   poster?: string;
+  imdbId?: string;
 }
 
 export function VideoPlayer({
@@ -25,6 +26,7 @@ export function VideoPlayer({
   adPartnerUrl1,
   adPartnerUrl2,
   poster,
+  imdbId,
 }: VideoPlayerProps) {
   const [gateOpen, setGateOpen] = useState(isWatchGateEnabled());
   const [gateVerified, setGateVerified] = useState(!isWatchGateEnabled());
@@ -82,7 +84,7 @@ export function VideoPlayer({
 
     const directTgUrl =
       type === "movie" || type === "tv"
-        ? `/api/resolve-tg?type=${type}&id=${id}&s=${s}&e=${e}`
+        ? `/api/resolve-tg?type=${type}&id=${id}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}&s=${s}&e=${e}`
         : "";
 
     const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
