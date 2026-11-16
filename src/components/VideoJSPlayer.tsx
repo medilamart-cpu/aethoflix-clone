@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { VolumeX, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import videojs from "video.js";
 import type Player from "video.js/dist/types/player";
 import "video.js/dist/video-js.css";
@@ -49,8 +49,14 @@ export function VideoJSPlayer({
   const vjsPlayerRef = useRef<Player | null>(null);
   const nativeVideoRef = useRef<HTMLVideoElement | null>(null);
   const [resumedNotice, setResumedNotice] = useState<string | null>(null);
-  const [isMutedAutoplay, setIsMutedAutoplay] = useState(false);
   const [useNativeCleanStream, setUseNativeCleanStream] = useState<boolean>(true);
+
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const storageKeyRef = useRef(storageKey);
+  storageKeyRef.current = storageKey;
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -219,9 +225,10 @@ export function VideoJSPlayer({
 
       if (mediaEl) {
         // Auto-resume from saved position
-        if (storageKey) {
+        const currentStorageKey = storageKeyRef.current;
+        if (currentStorageKey) {
           try {
-            const saved = localStorage.getItem(`aethoflix_resume_${storageKey}`);
+            const saved = localStorage.getItem(`aethoflix_resume_${currentStorageKey}`);
             if (saved) {
               const time = parseFloat(saved);
               if (time > 5) {
@@ -239,47 +246,42 @@ export function VideoJSPlayer({
 
         // Timeupdate persistence
         const onTimeUpdate = () => {
-          if (!storageKey) return;
+          const key = storageKeyRef.current;
+          if (!key) return;
           const ct = mediaEl.currentTime;
           const dur = mediaEl.duration;
           if (ct && ct > 5 && dur && dur - ct > 15) {
             try {
-              localStorage.setItem(`aethoflix_resume_${storageKey}`, String(Math.floor(ct)));
+              localStorage.setItem(`aethoflix_resume_${key}`, String(Math.floor(ct)));
             } catch {}
           }
         };
         mediaEl.addEventListener("timeupdate", onTimeUpdate);
 
         const onEnded = () => {
-          if (storageKey) {
+          const key = storageKeyRef.current;
+          if (key) {
             try {
-              localStorage.removeItem(`aethoflix_resume_${storageKey}`);
+              localStorage.removeItem(`aethoflix_resume_${key}`);
             } catch {}
           }
         };
         mediaEl.addEventListener("ended", onEnded);
 
-        // Muted Autoplay Handling
-        if (autoplay) {
-          mediaEl.play().catch((err) => {
-            console.info("[CleanStream] Autoplay policy prevented unmuted playback, falling back to muted:", err);
-            mediaEl.muted = true;
-            mediaEl.play().then(() => setIsMutedAutoplay(true)).catch(() => {});
-          });
-        }
-
-        mediaEl.addEventListener("volumechange", () => {
-          if (!mediaEl.muted) setIsMutedAutoplay(false);
+        // Direct unmuted playback (no forced mute)
+        mediaEl.muted = false;
+        mediaEl.play().catch(() => {
+          // Play was deferred until user taps or interacts
         });
 
         // Error detection
         mediaEl.addEventListener("error", (e) => {
           if (isDisposed) return;
           console.warn("[CleanStream Error] Media element error:", e);
-          onError?.(e);
+          onErrorRef.current?.(e);
         });
 
-        onReady?.(mediaEl);
+        onReadyRef.current?.(mediaEl);
       }
     } else {
       // ── CleanStream Video.js (v8 Fluid Engine Fallback) ──
@@ -298,7 +300,8 @@ export function VideoJSPlayer({
       const player = (vjsPlayerRef.current = videojs(
         videoElement,
         {
-          autoplay: autoplay ? "any" : false,
+          autoplay: true,
+          muted: false,
           controls,
           responsive: true,
           fluid: true,
@@ -317,11 +320,12 @@ export function VideoJSPlayer({
         },
         () => {
           if (isDisposed) return;
-          onReady?.(player);
+          onReadyRef.current?.(player);
 
-          if (storageKey) {
+          const key = storageKeyRef.current;
+          if (key) {
             try {
-              const saved = localStorage.getItem(`aethoflix_resume_${storageKey}`);
+              const saved = localStorage.getItem(`aethoflix_resume_${key}`);
               if (saved) {
                 const time = parseFloat(saved);
                 if (time > 5) {
@@ -332,39 +336,35 @@ export function VideoJSPlayer({
               }
             } catch {}
           }
-
-          if (player.muted()) setIsMutedAutoplay(true);
         }
       ));
 
       player.on("timeupdate", () => {
-        if (!storageKey) return;
+        const key = storageKeyRef.current;
+        if (!key) return;
         const ct = player.currentTime();
         const dur = player.duration();
         if (ct && ct > 5 && dur && dur - ct > 15) {
           try {
-            localStorage.setItem(`aethoflix_resume_${storageKey}`, String(Math.floor(ct)));
+            localStorage.setItem(`aethoflix_resume_${key}`, String(Math.floor(ct)));
           } catch {}
         }
       });
 
       player.on("ended", () => {
-        if (storageKey) {
+        const key = storageKeyRef.current;
+        if (key) {
           try {
-            localStorage.removeItem(`aethoflix_resume_${storageKey}`);
+            localStorage.removeItem(`aethoflix_resume_${key}`);
           } catch {}
         }
-      });
-
-      player.on("volumechange", () => {
-        if (!player.muted()) setIsMutedAutoplay(false);
       });
 
       player.on("error", () => {
         if (isDisposed) return;
         const err = player.error();
         console.warn("[CleanStream Error]", err);
-        onError?.(err);
+        onErrorRef.current?.(err);
       });
     }
 
@@ -380,33 +380,13 @@ export function VideoJSPlayer({
         container.innerHTML = "";
       }
     };
-  }, [src, isHls, autoplay, controls, poster, storageKey, onReady, onError]);
+  }, [src, isHls]);
 
   return (
     <div
       data-vjs-player
       className={`relative w-full h-full overflow-hidden bg-black select-none ${className}`}
     >
-      {/* Autoplay Muted Notice */}
-      {isMutedAutoplay && (
-        <button
-          type="button"
-          onClick={() => {
-            if (nativeVideoRef.current) {
-              nativeVideoRef.current.muted = false;
-              nativeVideoRef.current.play().catch(() => {});
-            } else if (vjsPlayerRef.current) {
-              vjsPlayerRef.current.muted(false);
-            }
-            setIsMutedAutoplay(false);
-          }}
-          className="absolute top-4 left-4 z-40 flex items-center gap-2 rounded-full bg-red-600/90 hover:bg-red-500 px-3.5 py-1.5 text-xs text-white backdrop-blur-md shadow-xl border border-red-400/40 cursor-pointer transition-all"
-        >
-          <VolumeX className="h-3.5 w-3.5 text-red-200" />
-          <span>Autoplay muted — Tap to Unmute</span>
-        </button>
-      )}
-
       {/* Auto-Resume Timestamp Toast */}
       {resumedNotice && (
         <div className="absolute top-4 right-4 z-40 flex items-center gap-1.5 rounded-lg bg-black/85 px-3 py-1.5 text-xs text-emerald-400 backdrop-blur-md border border-emerald-500/30 shadow-lg pointer-events-none">

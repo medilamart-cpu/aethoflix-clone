@@ -97,8 +97,8 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
-    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`,
+    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?server=cinesrc&autoplay=1`,
+    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?server=cinesrc&autoplay=1`,
   },
   {
     label: "Server 4",

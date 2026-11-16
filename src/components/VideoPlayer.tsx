@@ -227,16 +227,16 @@ export function VideoPlayer({
       res["Direct CDN (TheOGPirateBot)"] = "direct:pending:theog";
     }
 
-    // 3. Server 3: EmbedWave
+    // 3. Server 3: EmbedWave (pinned to working cinesrc backend with no-referrer)
     const parts = routingKey.split(":");
     const type = parts[0];
     const id = parts[1];
     const s = parts[2] || "1";
     const e = parts[3] || "1";
     if (type === "movie") {
-      res["EmbedWave"] = `https://embedwave.cc/embed/movie/${id}?nobrand=true`;
+      res["EmbedWave"] = `https://embedwave.cc/embed/movie/${id}?server=cinesrc&autoplay=1`;
     } else if (type === "tv") {
-      res["EmbedWave"] = `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`;
+      res["EmbedWave"] = `https://embedwave.cc/embed/tv/${id}/${s}/${e}?server=cinesrc&autoplay=1`;
     }
 
     // 4. Other clean mirrors (VidLink, VidFast, VidNest...)
@@ -415,6 +415,16 @@ export function VideoPlayer({
     };
   }, [isFullscreen]);
 
+  const handleDirectError = useCallback(() => {
+    setIframeError(true);
+    handleAutoFailover();
+  }, [handleAutoFailover]);
+
+  const handleIframeError = useCallback(() => {
+    setIframeError(true);
+    handleAutoFailover();
+  }, [handleAutoFailover]);
+
   const handleReload = useCallback(() => {
     setIframeError(false);
     setReloadKey((k) => k + 1);
@@ -525,16 +535,13 @@ export function VideoPlayer({
         {/* 1. Direct Stream Player with Video.js */}
         {url && isDirectStream && (
           <VideoJSPlayer
-            key={`vjs-${directStreamUrl}-${reloadKey}`}
+            key={`vjs-${directStreamUrl}`}
             src={directStreamUrl}
             poster={poster}
             autoplay={true}
             controls={true}
             storageKey={routingKey}
-            onError={() => {
-              setIframeError(true);
-              handleAutoFailover();
-            }}
+            onError={handleDirectError}
           />
         )}
 
@@ -551,7 +558,10 @@ export function VideoPlayer({
                   <Zap className="h-3.5 w-3.5" /> Jump to Next Server
                 </button>
                 <button
-                  onClick={handleReload}
+                  onClick={() => {
+                    setIframeError(false);
+                    setReloadKey((k) => k + 1);
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3.5 py-1.5 text-xs text-white hover:bg-white/20 transition-all cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Retry
@@ -576,11 +586,8 @@ export function VideoPlayer({
               playsInline: true,
               "webkit-playsinline": "true",
             } as any)}
-            referrerPolicy="origin"
-            onError={() => {
-              setIframeError(true);
-              handleAutoFailover();
-            }}
+            referrerPolicy="no-referrer"
+            onError={handleIframeError}
           />
         )}
       </div>

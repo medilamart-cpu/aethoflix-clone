@@ -33,7 +33,9 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
     id: "embedwave",
     provider: "EmbedWave",
     buildUrl: (id, s, e) =>
-      s && e ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true` : `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+      s && e
+        ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?server=cinesrc&autoplay=1`
+        : `https://embedwave.cc/embed/movie/${id}?server=cinesrc&autoplay=1`,
   },
   {
     id: "vidnest",
