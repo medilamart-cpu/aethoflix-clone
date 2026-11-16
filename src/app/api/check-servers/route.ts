@@ -30,6 +30,12 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
         : `https://embed.theogpiratebot.online/embed/movie/${id}?color=f4f4f4&autoplay=1`,
   },
   {
+    id: "embedwave",
+    provider: "EmbedWave",
+    buildUrl: (id, s, e) =>
+      s && e ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true` : `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+  },
+  {
     id: "vidnest",
     provider: "VidNest",
     buildUrl: (id, s, e) =>

@@ -91,6 +91,17 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   },
   {
     label: "Server 3",
+    provider: "EmbedWave",
+    base_url: "https://embedwave.cc",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`,
+  },
+  {
+    label: "Server 4",
     provider: "TheOGPirateBot",
     base_url: "https://embed.theogpiratebot.online",
     supports_movie: true,

@@ -71,28 +71,36 @@ export function MirrorPicker({
 
           const isTheOG = label.toLowerCase().includes("theog") || url.includes("theogpiratebot");
           const isReCloud = label.toLowerCase().includes("recloud") || url.includes("4animo");
+          const isEmbedWave = label.toLowerCase().includes("embedwave") || url.includes("embedwave.cc");
+          const isVidSync = label.toLowerCase().includes("vidsync") || url.includes("hscow") || url.includes("fcxmb") || url.startsWith("direct:pending:vidsync");
 
-          const directDisplayName = isTheOG
-            ? "Direct CDN (TheOGPirateBot)"
-            : isReCloud
-            ? "Direct CDN (ReCloud)"
-            : "Direct CDN (VidSync)";
+          let displayName: string;
+          let subtitle: string;
 
-          const displayName = isDirect
-            ? directDisplayName
-            : originalName
-            ? `Server ${index + 1} (${originalName})`
-            : `Server ${index + 1}`;
-
-          const subtitle = isSelected
-            ? "Now streaming"
-            : isDirect
-            ? "4K/1080p · Zero Ads"
-            : isFastest
-            ? `Fastest · ${latency ?? "Ready"}ms`
-            : latency
-            ? `Ready · ${latency}ms`
-            : "Tap to play";
+          if (isVidSync) {
+            displayName = "Server 1 (VidSync)";
+            subtitle = isSelected ? "Now streaming" : "4K/1080p · Zero Ads";
+          } else if (isTheOG) {
+            displayName = "Server 2 (TheOGPirateBot)";
+            subtitle = isSelected ? "Now streaming" : "1080p · Direct CDN";
+          } else if (isEmbedWave) {
+            displayName = "Server 3 (EmbedWave)";
+            subtitle = isSelected ? "Now streaming" : "Multi HD · Backup";
+          } else if (isReCloud) {
+            displayName = "Server 1 (ReCloud)";
+            subtitle = isSelected ? "Now streaming" : "1080p · Zero Ads";
+          } else {
+            displayName = originalName
+              ? `Server ${index + 1} (${originalName})`
+              : `Server ${index + 1}`;
+            subtitle = isSelected
+              ? "Now streaming"
+              : isFastest
+              ? `Fastest · ${latency ?? "Ready"}ms`
+              : latency
+              ? `Ready · ${latency}ms`
+              : "Tap to play";
+          }
 
           return (
             <button

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 interface VidSyncSource {
   id?: string;
   provider?: { id: string; name: string };

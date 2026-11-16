@@ -219,7 +219,7 @@ export function VideoPlayer({
       }
     }
 
-    // 2. Direct CDN 2 (TheOGPirateBot)
+    // 2. Server 2: TheOGPirateBot (OGPirate)
     const theOgDirect = directStreams.find((d) => d.label.includes("TheOG"));
     if (theOgDirect) {
       res["Direct CDN (TheOGPirateBot)"] = theOgDirect.url;
@@ -227,10 +227,23 @@ export function VideoPlayer({
       res["Direct CDN (TheOGPirateBot)"] = "direct:pending:theog";
     }
 
-    // 3. Embed mirrors (Server 1, Server 2...)
+    // 3. Server 3: EmbedWave
+    const parts = routingKey.split(":");
+    const type = parts[0];
+    const id = parts[1];
+    const s = parts[2] || "1";
+    const e = parts[3] || "1";
+    if (type === "movie") {
+      res["EmbedWave"] = `https://embedwave.cc/embed/movie/${id}?nobrand=true`;
+    } else if (type === "tv") {
+      res["EmbedWave"] = `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`;
+    }
+
+    // 4. Other clean mirrors (VidLink, VidFast, VidNest...)
     for (const [key, val] of Object.entries(cleanMirrors)) {
       if (key.toLowerCase().includes("theog") || val.includes("theogpiratebot")) continue;
       if (key.toLowerCase().includes("recloud") || val.includes("4animo")) continue;
+      if (key.toLowerCase().includes("embedwave") || val.includes("embedwave.cc")) continue;
       res[key] = val;
     }
 
