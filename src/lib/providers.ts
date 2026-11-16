@@ -91,14 +91,14 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   },
   {
     label: "Server 3",
-    provider: "EmbedWave",
-    base_url: "https://embedwave.cc",
+    provider: "Multi HD",
+    base_url: "https://nxsha.space",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?server=cinesrc&autoplay=1`,
-    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?server=cinesrc&autoplay=1`,
+    build_movie: (id) => `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`,
+    build_tv: (id, s, e) => `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`,
   },
   {
     label: "Server 4",
@@ -300,7 +300,7 @@ export function getProviderOriginalName(urlOrLabel: string): string | null {
   if (urlOrLabel.includes("vidfast.vc") || urlOrLabel.toLowerCase().includes("vidfast")) return "VidFast";
   if (urlOrLabel.includes("2embed.cc") || urlOrLabel.toLowerCase().includes("2embed")) return "2Embed";
   if (urlOrLabel.includes("zxcstream.cc") || urlOrLabel.toLowerCase().includes("zxcstream") || urlOrLabel.toLowerCase().includes("zxc")) return "ZXCStream";
-  if (urlOrLabel.includes("nxsha.space") || urlOrLabel.toLowerCase().includes("nxsha")) return "Nxsha";
+  if (urlOrLabel.includes("nxsha.space") || urlOrLabel.toLowerCase().includes("nxsha") || urlOrLabel.toLowerCase().includes("multihd") || urlOrLabel.toLowerCase().includes("multi hd")) return "Multi HD";
   if (urlOrLabel.includes("bingr.one") || urlOrLabel.toLowerCase().includes("bingr")) return "Bingr";
   if (urlOrLabel.includes("autoembed.cc") || urlOrLabel.toLowerCase().includes("autoembed")) return "AutoEmbed";
   if (urlOrLabel.includes("embed.su") || urlOrLabel.toLowerCase().includes("embedsu")) return "EmbedSU";

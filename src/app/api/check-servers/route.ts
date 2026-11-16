@@ -30,12 +30,12 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
         : `https://embed.theogpiratebot.online/embed/movie/${id}?color=f4f4f4&autoplay=1`,
   },
   {
-    id: "embedwave",
-    provider: "EmbedWave",
+    id: "multihd",
+    provider: "Multi HD",
     buildUrl: (id, s, e) =>
       s && e
-        ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?server=cinesrc&autoplay=1`
-        : `https://embedwave.cc/embed/movie/${id}?server=cinesrc&autoplay=1`,
+        ? `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`
+        : `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`,
   },
   {
     id: "vidnest",

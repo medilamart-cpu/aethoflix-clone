@@ -71,7 +71,11 @@ export function MirrorPicker({
 
           const isTheOG = label.toLowerCase().includes("theog") || url.includes("theogpiratebot");
           const isReCloud = label.toLowerCase().includes("recloud") || url.includes("4animo");
-          const isEmbedWave = label.toLowerCase().includes("embedwave") || url.includes("embedwave.cc");
+          const isMultiHD =
+            label.toLowerCase().includes("multi") ||
+            label.toLowerCase().includes("embedwave") ||
+            url.includes("nxsha") ||
+            url.includes("embedwave.cc");
           const isVidSync = label.toLowerCase().includes("vidsync") || url.includes("hscow") || url.includes("fcxmb") || url.startsWith("direct:pending:vidsync");
 
           let displayName: string;
@@ -83,9 +87,9 @@ export function MirrorPicker({
           } else if (isTheOG) {
             displayName = "Server 2 (TheOGPirateBot)";
             subtitle = isSelected ? "Now streaming" : "1080p · Direct CDN";
-          } else if (isEmbedWave) {
-            displayName = "Server 3 (EmbedWave)";
-            subtitle = isSelected ? "Now streaming" : "Multi HD · Backup";
+          } else if (isMultiHD) {
+            displayName = "Server 3 (Multi HD)";
+            subtitle = isSelected ? "Now streaming" : "Multi-Lang · 1080p";
           } else if (isReCloud) {
             displayName = "Server 1 (ReCloud)";
             subtitle = isSelected ? "Now streaming" : "1080p · Zero Ads";
