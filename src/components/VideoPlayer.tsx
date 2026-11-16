@@ -42,8 +42,16 @@ export function VideoPlayer({
     }
   }, [routingKey]);
 
-  const [directStream, setDirectStream] = useState<{ url: string; label: string } | null>(
-    initialCache?.directStream ?? null
+  const defaultInitialMirror = useMemo(() => {
+    if (initialCache?.selectedMirror) return initialCache.selectedMirror;
+    if (routingKey.startsWith("anime:")) {
+      return "Direct CDN (ReCloud)";
+    }
+    return "Direct CDN (VidSync)";
+  }, [initialCache, routingKey]);
+
+  const [directStreams, setDirectStreams] = useState<Array<{ url: string; label: string }>>(
+    initialCache?.directStreams ?? (initialCache?.directStream ? [initialCache.directStream] : [])
   );
   const [verifiedServers, setVerifiedServers] = useState<Array<{ label: string; url: string; latency: number }> | null>(
     initialCache?.verifiedServers ?? null
@@ -51,19 +59,18 @@ export function VideoPlayer({
   const [latencies, setLatencies] = useState<Record<string, number>>(initialCache?.latencies ?? {});
   const [fastestLabel, setFastestLabel] = useState<string | null>(initialCache?.verifiedServers?.[0]?.label ?? null);
   const [isFinalized, setIsFinalized] = useState<boolean>(!!initialCache);
-  const [selectedMirror, setSelectedMirror] = useState<string | null>(initialCache?.selectedMirror ?? null);
+  const [selectedMirror, setSelectedMirror] = useState<string | null>(defaultInitialMirror);
+  const [isSwitching, setIsSwitching] = useState<boolean>(false);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const userInteractedRef = useRef(false);
 
   // Reset stream states immediately whenever the routingKey changes (new movie/episode)
   useEffect(() => {
-    setDirectStream(null);
-    setSelectedMirror(null);
-    setVerifiedServers(null);
-    setIsFinalized(false);
+    setDirectStreams([]);
+    setSelectedMirror(defaultInitialMirror);
     setIframeError(false);
     userInteractedRef.current = false;
-  }, [routingKey]);
+  }, [routingKey, defaultInitialMirror]);
 
   // Single-pass server verification and ranking
   useEffect(() => {
@@ -78,9 +85,14 @@ export function VideoPlayer({
     let isMounted = true;
     setIsFinalized(false);
 
-    // Direct stream resolution for anime and movies/TV (VidSync Direct CDN)
+    // Direct stream resolution endpoints (TheOGPirateBot, ReCloud, VidSync)
+    const directTheOgUrl =
+      type === "movie" || type === "tv"
+        ? `/api/resolve-theog?type=${type}&id=${id}&s=${s}&e=${e}`
+        : "";
+
     const directAnimeUrl =
-      type === "anime" ? `/api/resolve-anime?id=${id}&s=${s}&e=${e}` : "";
+      type === "anime" ? `/api/resolve-recloud?id=${id}&s=${s}&e=${e}` : "";
 
     const directTgUrl =
       type === "movie" || type === "tv"
@@ -90,23 +102,37 @@ export function VideoPlayer({
     const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
 
     Promise.allSettled([
-      directAnimeUrl ? fetch(directAnimeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+      directTheOgUrl ? fetch(directTheOgUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
       directTgUrl ? fetch(directTgUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+      directAnimeUrl ? fetch(directAnimeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
       fetch(checkServersUrl).then((r) => r.json()).catch(() => null),
-    ]).then(([animeRes, tgRes, checkRes]) => {
+    ]).then(([theOgRes, tgRes, animeRes, checkRes]) => {
       if (!isMounted) return;
 
-      let foundDirect: { url: string; label: string } | null = null;
+      const foundDirects: Array<{ url: string; label: string }> = [];
+
+      // 1. Anime Direct (ReCloud)
       if (animeRes.status === "fulfilled" && animeRes.value?.ok && animeRes.value?.playable) {
-        foundDirect = {
+        foundDirects.push({
           url: animeRes.value.playable,
-          label: "Direct Anime (Video.js)",
-        };
-      } else if (tgRes.status === "fulfilled" && tgRes.value?.ok && tgRes.value?.playable) {
-        foundDirect = {
+          label: "Direct CDN (ReCloud)",
+        });
+      }
+
+      // 2. TheOGPirateBot Direct CDN (Accurate TMDb ID matching)
+      if (theOgRes.status === "fulfilled" && theOgRes.value?.ok && theOgRes.value?.playable) {
+        foundDirects.push({
+          url: theOgRes.value.playable,
+          label: "Direct CDN (TheOGPirateBot)",
+        });
+      }
+
+      // 3. VidSync Direct CDN
+      if (tgRes.status === "fulfilled" && tgRes.value?.ok && tgRes.value?.playable) {
+        foundDirects.push({
           url: tgRes.value.playable,
           label: "Direct CDN (VidSync)",
-        };
+        });
       }
 
       let foundServers: Array<{ label: string; url: string; latency: number }> = [];
@@ -124,27 +150,32 @@ export function VideoPlayer({
         }
       }
 
-      const defaultSelection = foundDirect
-        ? foundDirect.label
-        : (foundServers[0]?.label || Object.keys(mirrors)[0] || null);
-
-      setDirectStream(foundDirect);
+      setDirectStreams(foundDirects);
       setVerifiedServers(foundServers);
       setLatencies(latMap);
       if (foundServers[0]?.label) setFastestLabel(foundServers[0].label);
-      if (!userInteractedRef.current && defaultSelection) {
-        setSelectedMirror(defaultSelection);
+
+      // Auto-fallback or activate resolved direct CDN
+      if (!userInteractedRef.current) {
+        const preferredDirect = foundDirects.find((d) => d.label.includes("VidSync")) || foundDirects[0];
+        if (preferredDirect) {
+          setSelectedMirror(preferredDirect.label);
+        } else if (foundDirects.length === 0 && selectedMirror?.includes("Direct")) {
+          const fallback = foundServers[0]?.label || Object.keys(mirrors)[0] || null;
+          if (fallback) setSelectedMirror(fallback);
+        }
       }
+
       setIsFinalized(true);
 
       try {
         sessionStorage.setItem(
           `aethoflix_final_servers_${routingKey}`,
           JSON.stringify({
-            directStream: foundDirect,
+            directStreams: foundDirects,
             verifiedServers: foundServers,
             latencies: latMap,
-            selectedMirror: defaultSelection || "",
+            selectedMirror: (selectedMirror || foundDirects[0]?.label || ""),
           })
         );
       } catch {}
@@ -153,7 +184,7 @@ export function VideoPlayer({
     return () => {
       isMounted = false;
     };
-  }, [routingKey, initialCache, mirrors]);
+  }, [routingKey, initialCache, mirrors, imdbId]);
 
   // Clean verified mirrors dictionary
   const cleanMirrors: Record<string, string> = useMemo(() => {
@@ -167,20 +198,44 @@ export function VideoPlayer({
     return mirrors;
   }, [verifiedServers, mirrors]);
 
-  // Combine direct stream (TG Vid Direct CDN / Anime Direct) with verified embed mirrors
+  // Combine direct streams (VidSync, TheOGPirateBot, ReCloud) with verified embed mirrors
   const allMirrors: Record<string, string> = useMemo(() => {
     const res: Record<string, string> = {};
-    if (directStream) {
-      res[directStream.label] = directStream.url;
-    }
-    for (const [key, val] of Object.entries(cleanMirrors)) {
-      if (directStream && (key.toLowerCase().includes("tg vid") || val.includes("tgvid"))) {
-        continue; // omit duplicate TG Vid iframe since Direct CDN is active
+
+    // 1. Direct CDN 1 (VidSync for Movies/TV, ReCloud for Anime) - PRIMARY DEFAULT
+    if (routingKey.startsWith("anime:")) {
+      const recloudDirect = directStreams.find((d) => d.label.includes("ReCloud"));
+      if (recloudDirect) {
+        res["Direct CDN (ReCloud)"] = recloudDirect.url;
+      } else {
+        res["Direct CDN (ReCloud)"] = "direct:pending:recloud";
       }
+    } else {
+      const vidSyncDirect = directStreams.find((d) => d.label.includes("VidSync"));
+      if (vidSyncDirect) {
+        res["Direct CDN (VidSync)"] = vidSyncDirect.url;
+      } else {
+        res["Direct CDN (VidSync)"] = "direct:pending:vidsync";
+      }
+    }
+
+    // 2. Direct CDN 2 (TheOGPirateBot)
+    const theOgDirect = directStreams.find((d) => d.label.includes("TheOG"));
+    if (theOgDirect) {
+      res["Direct CDN (TheOGPirateBot)"] = theOgDirect.url;
+    } else if (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) {
+      res["Direct CDN (TheOGPirateBot)"] = "direct:pending:theog";
+    }
+
+    // 3. Embed mirrors (Server 1, Server 2...)
+    for (const [key, val] of Object.entries(cleanMirrors)) {
+      if (key.toLowerCase().includes("theog") || val.includes("theogpiratebot")) continue;
+      if (key.toLowerCase().includes("recloud") || val.includes("4animo")) continue;
       res[key] = val;
     }
+
     return res;
-  }, [directStream, cleanMirrors]);
+  }, [directStreams, cleanMirrors, routingKey]);
 
   const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
   const [iframeError, setIframeError] = useState(false);
@@ -370,13 +425,19 @@ export function VideoPlayer({
 
   const url = selectedMirror ? allMirrors[selectedMirror] : mirrorKeys[0] ? allMirrors[mirrorKeys[0]] : null;
 
-  // Determine if the selected source is a direct stream (e.g. for anime)
+  const isPendingDirect =
+    url?.startsWith("direct:pending:") || url?.startsWith("pending:");
+
+  // Determine if the selected source is a direct stream (Video.js HLS)
   const isDirectStream =
     url &&
+    !isPendingDirect &&
     (url.endsWith(".m3u8") ||
       url.endsWith(".mp4") ||
       url.includes(".m3u8?") ||
       url.includes(".mp4?") ||
+      url.includes("/api/v1/stream") ||
+      url.includes("/p?t=") ||
       url.startsWith("direct:"));
 
   const directStreamUrl = url?.replace(/^direct:/, "") || "";
@@ -403,6 +464,16 @@ export function VideoPlayer({
           </button>
         )}
 
+        {/* Smooth Server Switching Transition Overlay */}
+        {isSwitching && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/75 backdrop-blur-[2px] transition-all duration-200">
+            <div className="flex items-center gap-2.5 rounded-full bg-neutral-900/95 border border-white/10 px-4 py-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+              <div className="h-3.5 w-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs font-medium text-white tracking-wide">Connecting server...</span>
+            </div>
+          </div>
+        )}
+
         {!url && (
           <div className="flex h-full w-full items-center justify-center text-center">
             <div>
@@ -420,7 +491,25 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* 1. Direct Stream Player with HLS.js (for anime direct HLS) */}
+        {/* Pending Direct Stream Loading State */}
+        {isPendingDirect && (
+          <div className="flex h-full w-full flex-col items-center justify-center bg-black gap-3 select-none">
+            <div className="relative flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full border-2 border-red-500/20 border-t-red-500 animate-spin" />
+              <Zap className="h-5 w-5 text-red-500 absolute" />
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-center px-4">
+              <span className="text-sm font-semibold text-white tracking-wide">
+                Connecting {selectedMirror || "Direct CDN"}...
+              </span>
+              <span className="text-xs text-neutral-400 max-w-sm">
+                Fetching master stream with zero ads. Tap Server 1 below for instant backup.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 1. Direct Stream Player with Video.js */}
         {url && isDirectStream && (
           <VideoJSPlayer
             key={`vjs-${directStreamUrl}-${reloadKey}`}
@@ -437,7 +526,7 @@ export function VideoPlayer({
         )}
 
         {/* 2. Error Fallback State with Auto-Failover to Fastest Server */}
-        {url && iframeError && (
+        {url && iframeError && !isPendingDirect && (
           <div className="flex h-full w-full items-center justify-center bg-black">
             <div className="text-center px-6">
               <p className="text-sm text-neutral-300">This server is temporarily unavailable or blocked.</p>
@@ -460,7 +549,7 @@ export function VideoPlayer({
         )}
 
         {/* 3. Embed Player (Clean Iframe + Stealth Ad Shield) */}
-        {url && !isDirectStream && !iframeError && (
+        {url && !isDirectStream && !isPendingDirect && !iframeError && (
           <iframe
             key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
             src={url}
@@ -493,9 +582,14 @@ export function VideoPlayer({
             fastestLabel={fastestLabel}
             isLoading={!isFinalized}
             onSelect={(label) => {
+              if (label === selectedMirror) return;
               userInteractedRef.current = true;
+              setIsSwitching(true);
               setSelectedMirror(label);
               setIframeError(false);
+              setTimeout(() => {
+                setIsSwitching(false);
+              }, 250);
             }}
           />
 

@@ -204,10 +204,10 @@ export function VideoJSPlayer({
                 !isIOS && isHls
                   ? `<hlsjs-video id="cleanVideoPlayer" src="${src}" playsinline webkit-playsinline ${
                       autoplay ? "autoplay" : ""
-                    } controls style="width: 100%; height: 100%; object-fit: contain; background: #000;"></hlsjs-video>`
+                    } style="width: 100%; height: 100%; object-fit: contain; background: #000;"></hlsjs-video>`
                   : `<video id="cleanVideoPlayer" src="${src}" playsinline webkit-playsinline ${
                       autoplay ? "autoplay" : ""
-                    } controls style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>`
+                    } style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>`
               }
             </video-skin>
           </video-player>

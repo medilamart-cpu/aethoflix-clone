@@ -69,39 +69,6 @@ export interface StreamingProvider {
 export const STREAMING_PROVIDERS: StreamingProvider[] = [
   {
     label: "Server 1",
-    provider: "EmbedWave",
-    base_url: "https://embedwave.cc",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: true,
-    build_movie: (id) => `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
-    build_tv: (id, s, e) => `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true`,
-  },
-  {
-    label: "Server 2",
-    provider: "VidCore",
-    base_url: "https://vidcore.org",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: true,
-    build_movie: (id) => `https://vidcore.org/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 3",
-    provider: "VidNest",
-    base_url: "https://vidnest.pro",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: true,
-    build_movie: (id) => `https://vidnest.pro/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidnest.pro/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 4",
     provider: "VidLink",
     base_url: "https://vidlink.pro",
     supports_movie: true,
@@ -112,18 +79,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     build_tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true`,
   },
   {
-    label: "Server 4",
-    provider: "Videasy",
-    base_url: "https://player.videasy.to",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: true,
-    build_movie: (id) => `https://player.videasy.to/movie/${id}`,
-    build_tv: (id, s, e) => `https://player.videasy.to/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 5",
+    label: "Server 2",
     provider: "VidFast",
     base_url: "https://vidfast.vc",
     supports_movie: true,
@@ -132,6 +88,39 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     sandbox_compatible: true,
     build_movie: (id) => `https://vidfast.vc/movie/${id}?autoPlay=true`,
     build_tv: (id, s, e) => `https://vidfast.vc/tv/${id}/${s}/${e}?autoPlay=true`,
+  },
+  {
+    label: "Server 3",
+    provider: "TheOGPirateBot",
+    base_url: "https://embed.theogpiratebot.online",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://embed.theogpiratebot.online/embed/movie/${id}?color=f4f4f4&autoplay=1`,
+    build_tv: (id, s, e) => `https://embed.theogpiratebot.online/embed/tv/${id}/${s}/${e}?color=f4f4f4&autoplay=1&episodeSelector=1&autoplayNextEp=1`,
+  },
+  {
+    label: "Server 4",
+    provider: "VidNest",
+    base_url: "https://vidnest.pro",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://vidnest.pro/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidnest.pro/tv/${id}/${s}/${e}`,
+  },
+  {
+    label: "Server 5",
+    provider: "ZXCStream",
+    base_url: "https://zxcstream.cc",
+    supports_movie: true,
+    supports_tv: true,
+    supports_anime: false,
+    sandbox_compatible: true,
+    build_movie: (id) => `https://zxcstream.cc/player/movie/${id}`,
+    build_tv: (id, s, e) => `https://zxcstream.cc/player/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 6",
@@ -146,28 +135,17 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   },
   {
     label: "Server 7",
-    provider: "ZXCStream",
-    base_url: "https://zxcstream.cc",
+    provider: "Videasy",
+    base_url: "https://player.videasy.to",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
-    build_movie: (id) => `https://zxcstream.cc/player/movie/${id}`,
-    build_tv: (id, s, e) => `https://zxcstream.cc/player/tv/${id}/${s}/${e}`,
+    build_movie: (id) => `https://player.videasy.to/movie/${id}`,
+    build_tv: (id, s, e) => `https://player.videasy.to/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 8",
-    provider: "VidNest",
-    base_url: "https://vidnest.pro",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: true,
-    build_movie: (id) => `https://vidnest.pro/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidnest.pro/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 9",
     provider: "2Embed",
     base_url: "https://www.2embed.cc",
     supports_movie: true,
@@ -178,18 +156,7 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
     build_tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    label: "Server 10",
-    provider: "VidSrc",
-    base_url: "https://vidsrc.pm",
-    supports_movie: true,
-    supports_tv: true,
-    supports_anime: false,
-    sandbox_compatible: false,
-    build_movie: (id) => `https://vidsrc.pm/embed/movie/${id}`,
-    build_tv: (id, s, e) => `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    label: "Server 11",
+    label: "Server 9",
     provider: "VidSrc",
     base_url: "https://vidsrc.pm",
     supports_movie: true,
@@ -217,6 +184,42 @@ export function isProviderSandboxCompatible(urlOrLabel: string): boolean {
  */
 export function getProviderOriginalName(urlOrLabel: string): string | null {
   if (!urlOrLabel) return null;
+
+  if (
+    urlOrLabel.toLowerCase().includes("theog") ||
+    urlOrLabel.includes("theogpiratebot")
+  ) {
+    if (
+      urlOrLabel.startsWith("direct:") ||
+      urlOrLabel.endsWith(".m3u8") ||
+      urlOrLabel.endsWith(".mp4") ||
+      urlOrLabel.includes(".m3u8?") ||
+      urlOrLabel.includes(".mp4?") ||
+      urlOrLabel.includes("/api/v1/stream") ||
+      urlOrLabel.toLowerCase().includes("direct")
+    ) {
+      return "Direct CDN (TheOGPirateBot)";
+    }
+    return "TheOGPirateBot";
+  }
+
+  if (
+    urlOrLabel.toLowerCase().includes("recloud") ||
+    urlOrLabel.includes("4animo")
+  ) {
+    if (
+      urlOrLabel.startsWith("direct:") ||
+      urlOrLabel.endsWith(".m3u8") ||
+      urlOrLabel.endsWith(".mp4") ||
+      urlOrLabel.includes(".m3u8?") ||
+      urlOrLabel.includes(".mp4?") ||
+      urlOrLabel.includes("/p?t=") ||
+      urlOrLabel.toLowerCase().includes("direct")
+    ) {
+      return "Direct CDN (ReCloud)";
+    }
+    return "ReCloud";
+  }
 
   if (
     urlOrLabel.toLowerCase().includes("vidsync") ||
@@ -272,6 +275,8 @@ export function getProviderOriginalName(urlOrLabel: string): string | null {
   }
 
   // Additional signature matches
+  if (urlOrLabel.includes("theogpiratebot") || urlOrLabel.toLowerCase().includes("theog")) return "TheOGPirateBot";
+  if (urlOrLabel.includes("aethoflix") || urlOrLabel.toLowerCase().includes("aetho embed")) return "Aetho Embed";
   if (urlOrLabel.includes("tgvid")) return "TG Vid";
   if (urlOrLabel.includes("vidlink")) return "VidLink";
   if (urlOrLabel.includes("vidcore")) return "VidCore";

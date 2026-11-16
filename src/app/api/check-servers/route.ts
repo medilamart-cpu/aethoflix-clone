@@ -10,16 +10,24 @@ interface CandidateProvider {
 
 const CANDIDATE_PROVIDERS: CandidateProvider[] = [
   {
-    id: "embedwave",
-    provider: "EmbedWave",
+    id: "vidlink",
+    provider: "VidLink",
     buildUrl: (id, s, e) =>
-      s && e ? `https://embedwave.cc/embed/tv/${id}/${s}/${e}?nobrand=true` : `https://embedwave.cc/embed/movie/${id}?nobrand=true`,
+      s && e ? `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true` : `https://vidlink.pro/movie/${id}?autoplay=true`,
   },
   {
-    id: "vidcore",
-    provider: "VidCore",
+    id: "vidfast",
+    provider: "VidFast",
     buildUrl: (id, s, e) =>
-      s && e ? `https://vidcore.org/embed/tv/${id}/${s}/${e}` : `https://vidcore.org/embed/movie/${id}`,
+      s && e ? `https://vidfast.vc/tv/${id}/${s}/${e}?autoPlay=true` : `https://vidfast.vc/movie/${id}?autoPlay=true`,
+  },
+  {
+    id: "theog",
+    provider: "TheOGPirateBot",
+    buildUrl: (id, s, e) =>
+      s && e
+        ? `https://embed.theogpiratebot.online/embed/tv/${id}/${s}/${e}?color=f4f4f4&autoplay=1&episodeSelector=1&autoplayNextEp=1`
+        : `https://embed.theogpiratebot.online/embed/movie/${id}?color=f4f4f4&autoplay=1`,
   },
   {
     id: "vidnest",
@@ -28,22 +36,10 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
       s && e ? `https://vidnest.pro/tv/${id}/${s}/${e}` : `https://vidnest.pro/movie/${id}`,
   },
   {
-    id: "vidlink",
-    provider: "VidLink",
-    buildUrl: (id, s, e) =>
-      s && e ? `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true` : `https://vidlink.pro/movie/${id}?autoplay=true`,
-  },
-  {
     id: "videasy",
     provider: "Videasy",
     buildUrl: (id, s, e) =>
       s && e ? `https://player.videasy.to/tv/${id}/${s}/${e}` : `https://player.videasy.to/movie/${id}`,
-  },
-  {
-    id: "vidfast",
-    provider: "VidFast",
-    buildUrl: (id, s, e) =>
-      s && e ? `https://vidfast.vc/tv/${id}/${s}/${e}?autoPlay=true` : `https://vidfast.vc/movie/${id}?autoPlay=true`,
   },
   {
     id: "zxc",
@@ -56,12 +52,6 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
     provider: "VidRock",
     buildUrl: (id, s, e) =>
       s && e ? `https://vidrock.net/embed/tv/${id}/${s}/${e}` : `https://vidrock.net/embed/movie/${id}`,
-  },
-  {
-    id: "vidnest",
-    provider: "VidNest",
-    buildUrl: (id, s, e) =>
-      s && e ? `https://vidnest.pro/tv/${id}/${s}/${e}` : `https://vidnest.pro/movie/${id}`,
   },
   {
     id: "vidsrc",

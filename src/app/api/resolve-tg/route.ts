@@ -110,7 +110,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
     }
 
-    const queryIds = [id, imdb].filter(Boolean) as string[];
+    // Prioritize IMDb ID (e.g. tt32820897) first to prevent TMDb numeric ID collisions on scrapers
+    const queryIds = [imdb, id].filter(Boolean) as string[];
     let candidateSources: VidSyncSource[] = [];
 
     // Query VidSync Cloudflare Worker shard cluster with both TMDb and IMDb IDs

@@ -53,6 +53,26 @@ const PRESET_SERIES = [
 
 const SERVERS: ServerSpec[] = [
   {
+    id: "direct-theog",
+    name: "Direct CDN (TheOGPirateBot)",
+    domain: "embed.theogpiratebot.online",
+    ads: "Zero (Raw HLS Stream)",
+    free: "Yes (No ads, multi-audio)",
+    notes: "Direct HLS adaptive streaming via Elfura session API with English & Hindi audio inside Video.js.",
+    type: "direct",
+    buildUrl: () => "",
+  },
+  {
+    id: "direct-recloud",
+    name: "Direct CDN (ReCloud Anime)",
+    domain: "cdn.4animo.xyz",
+    ads: "Zero (Raw HLS Stream)",
+    free: "Yes (No ads, soft subs)",
+    notes: "Direct HLS anime stream extracted from NovusCloud/4animo inside Video.js.",
+    type: "direct",
+    buildUrl: () => "",
+  },
+  {
     id: "direct-cdn",
     name: "Direct CDN (VidSync)",
     domain: "vidsync-shard.workers.dev",
@@ -160,7 +180,7 @@ export default function TestServersPage() {
   const [tmdbId, setTmdbId] = useState("550");
   const [season, setSeason] = useState("1");
   const [episode, setEpisode] = useState("1");
-  const [activeServerId, setActiveServerId] = useState("direct-cdn");
+  const [activeServerId, setActiveServerId] = useState("direct-theog");
   const [splitServerId, setSplitServerId] = useState<string | null>("embedwave");
   const [isSplitView, setIsSplitView] = useState(false);
   const [strictSandbox, setStrictSandbox] = useState(true);
@@ -184,13 +204,14 @@ export default function TestServersPage() {
     setDirectDetails(null);
 
     try {
-      const q = new URLSearchParams({
-        type: mediaType,
-        id: tmdbId,
-        s: season,
-        e: episode,
-      });
-      const res = await fetch(`/api/resolve-tg?${q.toString()}`);
+      let endpoint = `/api/resolve-tg?type=${mediaType}&id=${tmdbId}&s=${season}&e=${episode}`;
+      if (activeServerId === "direct-theog") {
+        endpoint = `/api/resolve-theog?type=${mediaType}&id=${tmdbId}&s=${season}&e=${episode}`;
+      } else if (activeServerId === "direct-recloud") {
+        endpoint = `/api/resolve-recloud?id=${tmdbId}&e=${episode}`;
+      }
+
+      const res = await fetch(endpoint);
       const data = await res.json();
 
       if (data.ok && data.playable) {
@@ -204,7 +225,7 @@ export default function TestServersPage() {
     } finally {
       setDirectLoading(false);
     }
-  }, [mediaType, tmdbId, season, episode]);
+  }, [mediaType, tmdbId, season, episode, activeServerId]);
 
   useEffect(() => {
     resolveDirectCdn();
