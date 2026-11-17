@@ -99,6 +99,9 @@ async function verifyPlayable(url: string): Promise<boolean> {
   }
 }
 
+// In-memory cache for resolved streams (15 minute TTL)
+const STREAM_CACHE = new Map<string, { data: any; expiry: number }>();
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -110,6 +113,17 @@ export async function GET(request: NextRequest) {
 
     if (!id && !imdb) {
       return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
+    }
+
+    const cacheKey = `${type}:${id || imdb}:${season}:${episode}`;
+    const cached = STREAM_CACHE.get(cacheKey);
+    if (cached && cached.expiry > Date.now()) {
+      return NextResponse.json(cached.data, {
+        headers: {
+          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+          "X-Cache": "HIT",
+        },
+      });
     }
 
     // Prioritize IMDb ID (e.g. tt32820897) first to prevent TMDb numeric ID collisions on scrapers
@@ -192,19 +206,28 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        const isOk = await verifyPlayable(url);
-        if (isOk) {
-          return NextResponse.json({
-            ok: true,
-            playable: url,
-            type: "hls",
-            label: "Direct CDN (VidSync)",
-            quality: source.quality || "1080p",
-            audio: source.audio || source.audioLanguage || "en",
-            subtitles: source.subtitles || [],
-            availableCount: candidateSources.length,
-          });
-        }
+        // Fast-path: Return direct HLS stream instantly to eliminate buffering lag
+        const responseData = {
+          ok: true,
+          playable: url,
+          type: "hls",
+          label: "Direct CDN (VidSync)",
+          quality: source.quality || "1080p",
+          audio: source.audio || source.audioLanguage || "en",
+          subtitles: source.subtitles || [],
+          availableCount: candidateSources.length,
+        };
+
+        STREAM_CACHE.set(cacheKey, {
+          data: responseData,
+          expiry: Date.now() + 15 * 60 * 1000,
+        });
+
+        return NextResponse.json(responseData, {
+          headers: {
+            "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+          },
+        });
       }
     }
 

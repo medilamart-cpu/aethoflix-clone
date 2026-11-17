@@ -82,16 +82,16 @@ export function MirrorPicker({
           let subtitle: string;
 
           if (isVidSync) {
-            displayName = "Server 1 (VidSync)";
+            displayName = "Server 1 (Direct CDN)";
             subtitle = isSelected ? "Now streaming" : "4K/1080p · Zero Ads";
           } else if (isTheOG) {
-            displayName = "Server 2 (TheOGPirateBot)";
-            subtitle = isSelected ? "Now streaming" : "1080p · Direct CDN";
+            displayName = "Server 2 (Direct CDN)";
+            subtitle = isSelected ? "Now streaming" : "1080p · Fast Backup";
           } else if (isMultiHD) {
             displayName = "Server 3 (Multi HD)";
-            subtitle = isSelected ? "Now streaming" : "Multi-Lang · 1080p";
+            subtitle = isSelected ? "Now streaming" : "Multi-Lang Audio · 1080p";
           } else if (isReCloud) {
-            displayName = "Server 1 (ReCloud)";
+            displayName = "Server 1 (Direct CDN)";
             subtitle = isSelected ? "Now streaming" : "1080p · Zero Ads";
           } else {
             displayName = originalName

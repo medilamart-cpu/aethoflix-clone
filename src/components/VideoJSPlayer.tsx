@@ -18,6 +18,7 @@ export interface VideoJSPlayerProps {
   storageKey?: string;
   onReady?: (player: any) => void;
   onError?: (error: any) => void;
+  onFirstFrame?: () => void;
 }
 
 /**
@@ -44,6 +45,7 @@ export function VideoJSPlayer({
   storageKey,
   onReady,
   onError,
+  onFirstFrame,
 }: VideoJSPlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const vjsPlayerRef = useRef<Player | null>(null);
@@ -55,6 +57,8 @@ export function VideoJSPlayer({
   onReadyRef.current = onReady;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const onFirstFrameRef = useRef(onFirstFrame);
+  onFirstFrameRef.current = onFirstFrame;
   const storageKeyRef = useRef(storageKey);
   storageKeyRef.current = storageKey;
 
@@ -281,6 +285,26 @@ export function VideoJSPlayer({
           onErrorRef.current?.(e);
         });
 
+        // First frame playback detection
+        mediaEl.addEventListener(
+          "playing",
+          () => {
+            if (isDisposed) return;
+            onFirstFrameRef.current?.();
+          },
+          { once: true }
+        );
+        mediaEl.addEventListener(
+          "timeupdate",
+          () => {
+            if (isDisposed) return;
+            if (mediaEl.currentTime > 0.1) {
+              onFirstFrameRef.current?.();
+            }
+          },
+          { once: true }
+        );
+
         onReadyRef.current?.(mediaEl);
       }
     } else {
@@ -311,6 +335,15 @@ export function VideoJSPlayer({
           controlBar: {
             skipButtons: { forward: 10, backward: 10 },
           },
+          html5: {
+            vhs: {
+              overrideNative: true,
+              initialBufferLength: 0.5,
+              maxBufferLength: 30,
+              fastQualityChange: true,
+              handlePartialData: true,
+            },
+          },
           sources: [
             {
               src,
@@ -336,6 +369,17 @@ export function VideoJSPlayer({
               }
             } catch {}
           }
+
+          player.one("playing", () => {
+            if (isDisposed) return;
+            onFirstFrameRef.current?.();
+          });
+          player.one("timeupdate", () => {
+            if (isDisposed) return;
+            if ((player.currentTime() || 0) > 0.1) {
+              onFirstFrameRef.current?.();
+            }
+          });
         }
       ));
 

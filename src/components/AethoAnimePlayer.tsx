@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { getAnimeServers, type AnimeServerOption } from "@/lib/providers";
 import { VideoJSPlayer } from "./VideoJSPlayer";
+import { DirectStreamLoader } from "./DirectStreamLoader";
 import { useIsLocalhost } from "@/lib/useIsLocalhost";
 
 export interface AnimeEpisodeItem {
@@ -223,11 +224,11 @@ export function AethoAnimePlayer({
                   className="h-full w-full"
                 />
               ) : resolvingDirect ? (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black/90 p-4 text-center">
-                  <Zap className="h-8 w-8 animate-pulse text-sky-400" />
-                  <span className="text-sm font-semibold text-white">Connecting to Direct CDN (Video.js)...</span>
-                  <span className="text-xs text-neutral-400">Resolving high-speed 1080p HLS stream</span>
-                </div>
+                <DirectStreamLoader
+                  poster={backdropPath ? `https://image.tmdb.org/t/p/w1280${backdropPath}` : undefined}
+                  title={`${title} — Episode ${selectedEpisode}`}
+                  serverName="Direct CDN (ReCloud)"
+                />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center">
                   <span className="text-sm text-neutral-300">Direct CDN not available for this episode.</span>
