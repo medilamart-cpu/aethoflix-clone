@@ -9,6 +9,7 @@ import { VideoJSPlayer } from "./VideoJSPlayer";
 import { DirectStreamLoader } from "./DirectStreamLoader";
 import { VlcButton } from "./VlcButton";
 import { raceCandidateMirrors } from "@/lib/serverRacer";
+import { isProviderSandboxCompatible } from "@/lib/providers";
 
 interface VideoPlayerProps {
   routingKey: string; // "movie:1400940"
@@ -606,23 +607,31 @@ export function VideoPlayer({
         )}
 
         {/* 3. Embed Player (Clean Iframe + Stealth Ad Shield) */}
-        {url && !isDirectStream && !isPendingDirect && !iframeError && (
-          <iframe
-            key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
-            src={url}
-            title={`${routingTitle} — ${selectedMirror}`}
-            className="h-full w-full border-0 bg-black"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
-            allowFullScreen={true}
-            {...({
-              webkitallowfullscreen: "true",
-              mozallowfullscreen: "true",
-              playsInline: true,
-              "webkit-playsinline": "true",
-            } as any)}
-            referrerPolicy="no-referrer"
-          />
-        )}
+        {url && !isDirectStream && !isPendingDirect && !iframeError && (() => {
+          const shouldSandbox = isProviderSandboxCompatible(url) || isProviderSandboxCompatible(selectedMirror || "");
+          return (
+            <iframe
+              key={`${routingKey}-${selectedMirror}-${url}-${reloadKey}`}
+              src={url}
+              title={`${routingTitle} — ${selectedMirror}`}
+              className="h-full w-full border-0 bg-black"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *"
+              allowFullScreen={true}
+              sandbox={
+                shouldSandbox
+                  ? "allow-scripts allow-same-origin allow-forms allow-presentation"
+                  : undefined
+              }
+              {...({
+                webkitallowfullscreen: "true",
+                mozallowfullscreen: "true",
+                playsInline: true,
+                "webkit-playsinline": "true",
+              } as any)}
+              referrerPolicy="no-referrer"
+            />
+          );
+        })()}
       </div>
 
       {/* Server Selection & Action Bar */}
