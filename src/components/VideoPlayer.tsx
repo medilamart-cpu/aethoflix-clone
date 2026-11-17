@@ -62,11 +62,19 @@ export function VideoPlayer({
   const [fastestLabel, setFastestLabel] = useState<string | null>(initialCache?.verifiedServers?.[0]?.label ?? null);
   const [isFinalized, setIsFinalized] = useState<boolean>(!!initialCache);
   const [selectedMirror, setSelectedMirror] = useState<string | null>(defaultInitialMirror);
+  const [failedDirects, setFailedDirects] = useState<Set<string>>(new Set());
   const [isSwitching, setIsSwitching] = useState<boolean>(false);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const [isDirectLoading, setIsDirectLoading] = useState<boolean>(true);
   const [showDirectLoader, setShowDirectLoader] = useState<boolean>(true);
   const userInteractedRef = useRef(false);
+
+  const directStreamsRef = useRef(directStreams);
+  directStreamsRef.current = directStreams;
+  const verifiedServersRef = useRef(verifiedServers);
+  verifiedServersRef.current = verifiedServers;
+  const selectedMirrorRef = useRef(selectedMirror);
+  selectedMirrorRef.current = selectedMirror;
 
   const handleFirstFrame = useCallback(() => {
     setIsDirectLoading(false);
@@ -78,6 +86,7 @@ export function VideoPlayer({
   // Reset stream states immediately whenever the routingKey changes (new movie/episode)
   useEffect(() => {
     setDirectStreams([]);
+    setFailedDirects(new Set());
     setSelectedMirror(defaultInitialMirror);
     setIframeError(false);
     setIsDirectLoading(true);
@@ -114,9 +123,48 @@ export function VideoPlayer({
 
     const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
 
+    // Helper: Mark direct stream as unavailable / not in database and auto-failover immediately
+    const markDirectFailed = (failedLabel: string) => {
+      if (!isMounted) return;
+      setFailedDirects((prev) => {
+        const next = new Set(prev);
+        next.add(failedLabel);
+        return next;
+      });
+
+      if (selectedMirrorRef.current === failedLabel) {
+        // 1. Try other resolved direct stream first
+        const altDirect = directStreamsRef.current.find(
+          (d) => d.label !== failedLabel && d.url && !d.url.startsWith("direct:pending:")
+        );
+        if (altDirect) {
+          setSelectedMirror(altDirect.label);
+          return;
+        }
+
+        // 2. Otherwise auto-failover to available embed server
+        setIsDirectLoading(false);
+        setShowDirectLoader(false);
+
+        const availableEmbed = verifiedServersRef.current?.find(
+          (srv) => srv.label && srv.label !== failedLabel
+        );
+        if (availableEmbed) {
+          setSelectedMirror(availableEmbed.label);
+        } else {
+          setSelectedMirror("Multi HD (EmbedWave)");
+        }
+      }
+    };
+
     // Fast-path helper: immediately mounts and activates the direct stream the exact ms it resolves
     const registerDirectStream = (stream: { url: string; label: string }, isPrimary: boolean) => {
       if (!isMounted) return;
+      setFailedDirects((prev) => {
+        const next = new Set(prev);
+        next.delete(stream.label);
+        return next;
+      });
       setDirectStreams((prev) => {
         const next = prev.filter((d) => d.label !== stream.label);
         const updated = [...next, stream];
@@ -125,7 +173,7 @@ export function VideoPlayer({
             `aethoflix_final_servers_${routingKey}`,
             JSON.stringify({
               directStreams: updated,
-              selectedMirror: isPrimary ? stream.label : (selectedMirror || stream.label),
+              selectedMirror: isPrimary ? stream.label : (selectedMirrorRef.current || stream.label),
             })
           );
         } catch {}
@@ -139,38 +187,83 @@ export function VideoPlayer({
 
     // 1. Instant Direct Stream 1: VidSync (Primary Server 1)
     if (directTgUrl) {
-      fetch(directTgUrl)
-        .then((r) => r.json())
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+        markDirectFailed("Direct CDN (VidSync)");
+      }, 3500);
+
+      fetch(directTgUrl, { signal: controller.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error("Unavailable");
+          return r.json();
+        })
         .then((res) => {
+          clearTimeout(timer);
           if (res?.ok && res?.playable) {
             registerDirectStream({ url: res.playable, label: "Direct CDN (VidSync)" }, true);
+          } else {
+            markDirectFailed("Direct CDN (VidSync)");
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          clearTimeout(timer);
+          markDirectFailed("Direct CDN (VidSync)");
+        });
     }
 
     // 2. Instant Direct Stream 2: TheOGPirateBot (Server 2)
     if (directTheOgUrl) {
-      fetch(directTheOgUrl)
-        .then((r) => r.json())
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+        markDirectFailed("Direct CDN (TheOGPirateBot)");
+      }, 3500);
+
+      fetch(directTheOgUrl, { signal: controller.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error("Unavailable");
+          return r.json();
+        })
         .then((res) => {
+          clearTimeout(timer);
           if (res?.ok && res?.playable) {
             registerDirectStream({ url: res.playable, label: "Direct CDN (TheOGPirateBot)" }, false);
+          } else {
+            markDirectFailed("Direct CDN (TheOGPirateBot)");
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          clearTimeout(timer);
+          markDirectFailed("Direct CDN (TheOGPirateBot)");
+        });
     }
 
     // 3. Instant Direct Stream Anime: ReCloud
     if (directAnimeUrl) {
-      fetch(directAnimeUrl)
-        .then((r) => r.json())
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+        markDirectFailed("Direct CDN (ReCloud)");
+      }, 3500);
+
+      fetch(directAnimeUrl, { signal: controller.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error("Unavailable");
+          return r.json();
+        })
         .then((res) => {
+          clearTimeout(timer);
           if (res?.ok && res?.playable) {
             registerDirectStream({ url: res.playable, label: "Direct CDN (ReCloud)" }, true);
+          } else {
+            markDirectFailed("Direct CDN (ReCloud)");
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          clearTimeout(timer);
+          markDirectFailed("Direct CDN (ReCloud)");
+        });
     }
 
     // 4. Background Server Verification: Probes external embeds silently without stalling playback!
@@ -229,14 +322,14 @@ export function VideoPlayer({
       const recloudDirect = directStreams.find((d) => d.label.includes("ReCloud"));
       if (recloudDirect) {
         res["Direct CDN (ReCloud)"] = recloudDirect.url;
-      } else {
+      } else if (!failedDirects.has("Direct CDN (ReCloud)")) {
         res["Direct CDN (ReCloud)"] = "direct:pending:recloud";
       }
     } else {
       const vidSyncDirect = directStreams.find((d) => d.label.includes("VidSync"));
       if (vidSyncDirect) {
         res["Direct CDN (VidSync)"] = vidSyncDirect.url;
-      } else {
+      } else if (!failedDirects.has("Direct CDN (VidSync)")) {
         res["Direct CDN (VidSync)"] = "direct:pending:vidsync";
       }
     }
@@ -245,7 +338,10 @@ export function VideoPlayer({
     const theOgDirect = directStreams.find((d) => d.label.includes("TheOG"));
     if (theOgDirect) {
       res["Direct CDN (TheOGPirateBot)"] = theOgDirect.url;
-    } else if (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) {
+    } else if (
+      (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) &&
+      !failedDirects.has("Direct CDN (TheOGPirateBot)")
+    ) {
       res["Direct CDN (TheOGPirateBot)"] = "direct:pending:theog";
     }
 
@@ -277,7 +373,7 @@ export function VideoPlayer({
     }
 
     return res;
-  }, [directStreams, cleanMirrors, routingKey]);
+  }, [directStreams, cleanMirrors, routingKey, failedDirects]);
 
   const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
   const [iframeError, setIframeError] = useState(false);

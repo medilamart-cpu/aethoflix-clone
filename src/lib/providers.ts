@@ -182,34 +182,28 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
 export function isProviderSandboxCompatible(urlOrLabel?: string | null): boolean {
   if (!urlOrLabel) return false;
   const lower = urlOrLabel.toLowerCase();
-  
-  // Servers known to break with anti-adblock walls if sandboxed
-  if (lower.includes("vidsrc") || lower.includes("vidsrc.pm") || lower.includes("vidsrc.xyz")) {
+
+  // EXPLICITLY DO NOT SANDBOX: VidLink, VidSrc, or any server that requires full frame permissions
+  if (
+    lower.includes("vidlink") ||
+    lower.includes("vidsrc") ||
+    lower.includes("vidsrc.pm") ||
+    lower.includes("vidsrc.xyz")
+  ) {
     return false;
   }
 
-  // Actively sandbox EmbedWave, Nxsha, Multi HD, VidLink, VidFast, VidNest, etc. to block popups & ad redirects
+  // ONLY sandbox EmbedWave, Nxsha, Multi HD where user specifically requested ad/popup blocking
   if (
     lower.includes("embedwave") ||
     lower.includes("nxsha") ||
     lower.includes("multihd") ||
-    lower.includes("multi hd") ||
-    lower.includes("vidnest") ||
-    lower.includes("vidlink") ||
-    lower.includes("vidfast") ||
-    lower.includes("zxc") ||
-    lower.includes("2embed") ||
-    lower.includes("videasy")
+    lower.includes("multi hd")
   ) {
     return true;
   }
 
-  const match = STREAMING_PROVIDERS.find(
-    (p) =>
-      p.label === urlOrLabel ||
-      urlOrLabel.includes(p.base_url.replace("https://", "").replace("http://", ""))
-  );
-  return match?.sandbox_compatible ?? true;
+  return false;
 }
 
 /**

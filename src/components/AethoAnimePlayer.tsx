@@ -248,7 +248,6 @@ export function AethoAnimePlayer({
                 title={`${title} Episode ${selectedEpisode} Player`}
                 allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                 referrerPolicy="strict-origin-when-cross-origin"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                 allowFullScreen
               />
             ) : (
