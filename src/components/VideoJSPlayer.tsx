@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
@@ -141,10 +141,11 @@ function PlayerStateBridge({
 /**
  * Modern Video.js 10 React Player Component
  * Architecture:
- * - Pure Video.js 10 architecture with zero extra portals, zero ad-hoc buttons
- * - Quality, Playback Speed, Audio Tracks, and Captions are handled 100% natively by Video.js's native control bar
- * - Settings gear popup natively presents Quality (Auto, 1080p, 720p, etc.) and Speed (0.5x, 1x, etc.)
- * - Direct CDN multi-language subtitles bound via standard <track> elements, fully integrated into Video.js captions submenu
+ * - 100% native Video.js control bar with zero extraneous overlays or portals
+ * - Automatically synthesizes multi-rendition HLS manifests for discrete CDN sources
+ *   so Video.js's native Quality menu detects all levels and displays:
+ *   "Quality  Auto (1080p) >" and "Speed  1x >" directly in the settings popup
+ * - Direct CDN multi-language subtitles bound via standard <track> elements
  * - Obsidian dark glass (#050505) aesthetic with signature Netflix crimson (#e50914) accent
  */
 export function VideoJSPlayer({
@@ -154,6 +155,7 @@ export function VideoJSPlayer({
   controls = true,
   className = "",
   subtitles = [],
+  availableQualities,
   storageKey,
   onError,
   onFirstFrame,
@@ -161,6 +163,91 @@ export function VideoJSPlayer({
   const isHls =
     src.includes(".m3u8") ||
     (!src.includes(".mp4") && !src.includes(".webm"));
+
+  // Ensure Video.js native Quality menu has multi-rendition levels to display
+  const effectiveSrc = useMemo(() => {
+    if (!src || !isHls) return src;
+    if (src.startsWith("/api/hls-master")) return src;
+
+    // Collect all candidate HLS stream renditions
+    let hlsQualities: Array<{ quality: string; url: string }> = [];
+
+    if (Array.isArray(availableQualities)) {
+      for (const q of availableQualities) {
+        if (q && typeof q === "object" && q.url && q.url.includes(".m3u8")) {
+          hlsQualities.push({ quality: q.quality || "720p", url: q.url });
+        }
+      }
+    }
+
+    // Auto-detect paired resolution for single-level Castle HLS streams (e.g. 720p <-> 480p)
+    if (hlsQualities.length <= 1 && src.includes("/720/")) {
+      hlsQualities = [
+        { quality: "720p", url: src },
+        { quality: "480p", url: src.replace("/720/", "/480/") },
+      ];
+    } else if (hlsQualities.length <= 1 && src.includes("/1080/")) {
+      hlsQualities = [
+        { quality: "1080p", url: src },
+        { quality: "720p", url: src.replace("/1080/", "/720/") },
+        { quality: "480p", url: src.replace("/1080/", "/480/") },
+      ];
+    }
+
+    if (hlsQualities.length > 1 && typeof window !== "undefined") {
+      // Build standard HLS Master Playlist
+      const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
+      const sorted = [...hlsQualities].sort((a, b) => {
+        const hA = parseInt(a.quality) || 0;
+        const hB = parseInt(b.quality) || 0;
+        return hB - hA;
+      });
+
+      const seen = new Set<string>();
+      for (const q of sorted) {
+        const label = q.quality || "720p";
+        if (seen.has(label)) continue;
+        seen.add(label);
+
+        const height = parseInt(label) || 720;
+        let width = 1280;
+        let bandwidth = 2500000;
+
+        if (height >= 1080) {
+          width = 1920;
+          bandwidth = 5000000;
+        } else if (height >= 720) {
+          width = 1280;
+          bandwidth = 2500000;
+        } else if (height >= 480) {
+          width = 854;
+          bandwidth = 1200000;
+        } else {
+          width = 640;
+          bandwidth = 800000;
+        }
+
+        lines.push(
+          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
+        );
+        lines.push(q.url);
+      }
+
+      const manifest = lines.join("\n") + "\n";
+      const blob = new Blob([manifest], { type: "application/vnd.apple.mpegurl" });
+      return URL.createObjectURL(blob);
+    }
+
+    return src;
+  }, [src, isHls, availableQualities]);
+
+  useEffect(() => {
+    return () => {
+      if (effectiveSrc && effectiveSrc.startsWith("blob:")) {
+        URL.revokeObjectURL(effectiveSrc);
+      }
+    };
+  }, [effectiveSrc]);
 
   return (
     <div className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}>
@@ -187,7 +274,7 @@ export function VideoJSPlayer({
         >
           {isHls ? (
             <HlsJsVideo
-              src={src}
+              src={effectiveSrc}
               playsInline
               preload="auto"
               crossOrigin="anonymous"

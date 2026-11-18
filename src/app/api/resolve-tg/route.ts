@@ -444,10 +444,23 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
+        // Multi-rendition HLS Master Playlist: when multiple discrete stream qualities exist,
+        // construct a master playlist so Video.js's native Quality menu detects all renditions.
+        const hlsStreams = aggregatedQualities.filter(
+          (q) => q && q.url && q.url.includes(".m3u8")
+        );
+
+        let finalPlayable = url;
+        if (hlsStreams.length > 1) {
+          const encoded = Buffer.from(JSON.stringify(hlsStreams)).toString("base64");
+          finalPlayable = `/api/hls-master?data=${encodeURIComponent(encoded)}`;
+        }
+
         // Fast-path: Return direct HLS stream instantly with full source metadata
         const responseData = {
           ok: true,
-          playable: url,
+          playable: finalPlayable,
+          directUrl: url,
           type: "hls",
           label: "Direct CDN (VidSync)",
           quality: source.quality || "720p",
