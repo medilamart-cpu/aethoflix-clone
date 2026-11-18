@@ -119,7 +119,7 @@ function extractTitleFromSource(s: VidSyncSource): string | null {
     try {
       const match = s.fallbackProxyUrl.match(/%22title%22%3A%22([^%]+)%22/);
       if (match) return decodeURIComponent(match[1]);
-    } catch {}
+    } catch { }
   }
   return null;
 }
@@ -209,9 +209,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Resilient Type Fallback ──
+    // If 0 sources found under requested type, check alternate type (movie <-> tv)
+    // Supports miniseries, specials, or scrapers where titles are indexed under TV or Movie
+    let resolvedType = type;
+    if (candidateSources.length === 0) {
+      const altType = type === "movie" ? "tv" : "movie";
+      const altKey = `${altType}-${tmdbNumericId}-${season}-${episode}`;
+      const altShards = [
+        "https://vidsync-shard.vs-sharaparvin76.workers.dev",
+        getShard(altKey, 0),
+      ];
+
+      for (const shard of altShards) {
+        const altParams = new URLSearchParams({
+          type: altType,
+          id: tmdbNumericId,
+          season: season || "1",
+          episode: episode || "1",
+          _t: String(Date.now()),
+        });
+
+        try {
+          const res = await fetch(`${shard}/api/core/streams?${altParams.toString()}`, {
+            headers: {
+              Origin: "https://vidsync.pro",
+              Referer: "https://vidsync.pro/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text.startsWith("{")) continue;
+          const data = JSON.parse(text);
+          if (Array.isArray(data?.sources) && data.sources.length > 0) {
+            candidateSources = data.sources;
+            activeShard = shard;
+            resolvedType = altType;
+            break;
+          }
+        } catch {}
+      }
+    }
+
     // ── Title Matching Validation Guard ──
-    // Prevents ID collisions (e.g. TMDb 60948 Castle Rock vs Castle) from serving wrong content
-    if (title && candidateSources.length > 0) {
+    // If title is passed and multiple sources exist, prioritize exact matching title
+    if (title && candidateSources.length > 1) {
       const reqNorm = normalizeTitle(title);
       const filtered = candidateSources.filter((src) => {
         const srcTitle = extractTitleFromSource(src);
@@ -229,9 +274,9 @@ export async function GET(request: NextRequest) {
     try {
       const subParams = new URLSearchParams({
         id: tmdbNumericId,
-        type,
+        type: resolvedType,
       });
-      if (type === "tv") {
+      if (resolvedType === "tv") {
         subParams.set("season", season);
         subParams.set("episode", episode);
       }
@@ -250,7 +295,7 @@ export async function GET(request: NextRequest) {
           workerSubtitles = subData.subtitles;
         }
       }
-    } catch {}
+    } catch { }
 
     // Intelligent audio ranking: prioritize English and original audio
     candidateSources.sort((a, b) => {
@@ -306,20 +351,20 @@ export async function GET(request: NextRequest) {
         (aLang === "en"
           ? "English (Original)"
           : aLang === "hi"
-          ? "Hindi"
-          : aLang === "ta"
-          ? "Tamil"
-          : aLang === "te"
-          ? "Telugu"
-          : aLang === "ml"
-          ? "Malayalam"
-          : aLang === "ja"
-          ? "Japanese (Original)"
-          : aLang === "es"
-          ? "Spanish"
-          : aLang === "fr"
-          ? "French"
-          : aLang.toUpperCase());
+            ? "Hindi"
+            : aLang === "ta"
+              ? "Tamil"
+              : aLang === "te"
+                ? "Telugu"
+                : aLang === "ml"
+                  ? "Malayalam"
+                  : aLang === "ja"
+                    ? "Japanese (Original)"
+                    : aLang === "es"
+                      ? "Spanish"
+                      : aLang === "fr"
+                        ? "French"
+                        : aLang.toUpperCase());
       if (!seenAudios.has(aLang)) {
         seenAudios.add(aLang);
         aggregatedAudioTracks.push({
@@ -394,8 +439,7 @@ export async function GET(request: NextRequest) {
           lowerUrl.includes("preview") ||
           lowerUrl.includes("_preview_") ||
           lowerUrl.includes("trailer") ||
-          lowerUrl.includes("sample") ||
-          (id === "60948" && source.id?.toLowerCase().includes("castle"))
+          lowerUrl.includes("sample")
         ) {
           continue;
         }
