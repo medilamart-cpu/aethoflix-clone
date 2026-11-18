@@ -12,6 +12,7 @@
    - The player must use official `@videojs/react/video` components (`VideoPlayer`, `VideoSkin`, `HlsJsVideo`, `Video`, `usePlayer`, `useMedia`).
    - **ZERO floating buttons in corners**: Do NOT place custom floating "Settings", "Fullscreen", or "Quality" buttons in the top-right, top-left, or any corner overlay. All controls MUST live within Video.js's native bottom control bar.
    - **Native Video.js Settings Gear Popup**: Quality (`QualityMenu`), Audio Language (`AudioTrackMenu`), Speed (`PlaybackRateSubmenu`), and Captions (`CaptionsSubmenu`) must all be presented through Video.js's native gear menu popup.
+   - **Direct Stream URL Detection Invariant**: `isDirectStream` in `VideoPlayer.tsx` and `MirrorPicker.tsx` must explicitly recognize `/api/hls-master`, `blob:`, `.m3u8`, `.mp4`, and any label containing `direct`. Omitting `/api/hls-master` causes the player to fall back to the generic `<iframe>` renderer, displaying Chrome's centered default media box rather than the obsidian-glass Video.js interface.
 
 2. **Native Audio Language Control & Multi-Audio Invariant**:
    - Video.js's native `AudioTrackRadioGroupCore` checks `availability = media.audioTrackList.length > 1 ? "available" : "unavailable"`.
