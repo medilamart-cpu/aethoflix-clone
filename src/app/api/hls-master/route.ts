@@ -7,6 +7,12 @@ interface StreamQuality {
   url: string;
 }
 
+interface AudioTrack {
+  language: string;
+  label: string;
+  url: string;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const dataParam = searchParams.get("data");
@@ -16,26 +22,56 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const raw = Buffer.from(dataParam, "base64").toString("utf-8");
-    const qualities: StreamQuality[] = JSON.parse(raw);
+    const raw = Buffer.from(decodeURIComponent(dataParam), "base64").toString("utf-8");
+    const parsed = JSON.parse(raw);
 
-    if (!Array.isArray(qualities) || qualities.length === 0) {
-      return new NextResponse("#EXTM3U\n", { status: 400 });
+    let qualities: StreamQuality[] = [];
+    let audios: AudioTrack[] = [];
+
+    if (Array.isArray(parsed)) {
+      qualities = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      qualities = parsed.qualities || [];
+      audios = parsed.audios || [];
     }
 
     const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
 
-    // Filter to valid m3u8 streams, skip "Auto" label (HLS master provides Auto automatically), and sort descending (1080p, 720p, 480p, 360p)
-    const valid = qualities.filter(
+    // Filter to valid m3u8 streams, skip "Auto" label, sort descending (1080p, 720p, 480p, 360p)
+    const validQualities = qualities.filter(
       (q) => q && q.url && q.url.startsWith("http") && q.quality?.toLowerCase() !== "auto"
     );
-    const sorted = [...valid].sort((a, b) => {
+    const sortedQualities = [...validQualities].sort((a, b) => {
       const hA = parseInt(a.quality) || 0;
       const hB = parseInt(b.quality) || 0;
       return hB - hA;
     });
 
-    for (const q of sorted) {
+    // Filter to valid audio tracks
+    const validAudios = audios.filter((a) => a && a.url && a.url.startsWith("http"));
+    const hasAudios = validAudios.length > 1;
+
+    // Output Audio Track definitions (#EXT-X-MEDIA:TYPE=AUDIO)
+    if (hasAudios) {
+      const seenAudios = new Set<string>();
+      let isFirst = true;
+      for (const a of validAudios) {
+        const lang = a.language || "en";
+        if (seenAudios.has(lang)) continue;
+        seenAudios.add(lang);
+
+        const label = a.label || lang.toUpperCase();
+        const isDefault = isFirst || lang === "en";
+        lines.push(
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
+        );
+        isFirst = false;
+      }
+    }
+
+    const audioAttr = hasAudios ? ',AUDIO="audio"' : "";
+
+    for (const q of sortedQualities) {
       const label = q.quality || "720p";
       const height = parseInt(label) || 720;
       let width = 1280;
@@ -56,7 +92,7 @@ export async function GET(req: NextRequest) {
       }
 
       lines.push(
-        `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
+        `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height}${audioAttr},NAME="${label}"`
       );
       lines.push(q.url);
     }

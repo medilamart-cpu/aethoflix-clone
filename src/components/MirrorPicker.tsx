@@ -69,35 +69,39 @@ export function MirrorPicker({
 
           const originalName = getProviderOriginalName(url) || getProviderOriginalName(label);
 
-          const isTheOG = label.toLowerCase().includes("theog") || url.includes("theogpiratebot");
           const isReCloud = label.toLowerCase().includes("recloud") || url.includes("4animo");
           const isMultiHD =
             label.toLowerCase().includes("multi") ||
             label.toLowerCase().includes("embedwave") ||
             url.includes("nxsha") ||
             url.includes("embedwave.cc");
-          const isVidSync = label.toLowerCase().includes("vidsync") || url.includes("hscow") || url.includes("fcxmb") || url.startsWith("direct:pending:vidsync");
+          const isVidSync =
+            label.toLowerCase().includes("vidsync") ||
+            url.includes("hscow") ||
+            url.includes("fcxmb") ||
+            url.startsWith("direct:pending:vidsync");
+          const isVidLink =
+            label.toLowerCase().includes("vidlink") ||
+            url.includes("vidlink.pro");
+          const isVidStuck =
+            label.toLowerCase().includes("vidstuck") ||
+            url.includes("vidstuck.cc");
 
           let displayName: string;
           let subtitle: string;
 
-          const isServer2 =
-            isTheOG ||
-            label.toLowerCase().includes("server 2") ||
-            url.startsWith("direct:pending:server2");
-
-          if (isVidSync) {
+          if (isVidSync || isReCloud) {
             displayName = "Server 1 (Direct CDN)";
             subtitle = isSelected ? "Now streaming" : "4K/1080p · Zero Ads";
-          } else if (isServer2) {
-            displayName = "Server 2 (Direct CDN)";
-            subtitle = isSelected ? "Now streaming" : "1080p · Fast Backup";
           } else if (isMultiHD) {
-            displayName = "Server 3 (Multi HD)";
+            displayName = "Server 2 (Multi HD)";
             subtitle = isSelected ? "Now streaming" : "Multi-Lang Audio · 1080p";
-          } else if (isReCloud) {
-            displayName = "Server 1 (Direct CDN)";
-            subtitle = isSelected ? "Now streaming" : "1080p · Zero Ads";
+          } else if (isVidLink) {
+            displayName = "Server 3 (VidLink)";
+            subtitle = isSelected ? "Now streaming" : "Fast · 1080p Stream";
+          } else if (isVidStuck) {
+            displayName = "Server 4 (VidStuck)";
+            subtitle = isSelected ? "Now streaming" : "High Reliability";
           } else {
             displayName = originalName
               ? `Server ${index + 1} (${originalName})`

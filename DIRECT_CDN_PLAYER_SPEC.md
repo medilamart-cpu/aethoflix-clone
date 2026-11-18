@@ -9,29 +9,44 @@
 ## 1. Core Invariants & Golden Rules
 
 1. **Pure Native Video.js 10 Architecture**:
-   - The player must use official `@videojs/react/video` components (`VideoPlayer`, `VideoSkin`, `HlsJsVideo`, `Video`, `usePlayer`).
+   - The player must use official `@videojs/react/video` components (`VideoPlayer`, `VideoSkin`, `HlsJsVideo`, `Video`, `usePlayer`, `useMedia`).
    - **ZERO floating buttons in corners**: Do NOT place custom floating "Settings", "Fullscreen", or "Quality" buttons in the top-right, top-left, or any corner overlay. All controls MUST live within Video.js's native bottom control bar.
-   - **Native Video.js Settings Gear Popup**: Quality (`QualityMenu`), Speed (`PlaybackRateSubmenu`), Captions (`CaptionsSubmenu`), and Audio (`AudioTrackMenu`) must be presented through Video.js's native gear menu popup.
+   - **Native Video.js Settings Gear Popup**: Quality (`QualityMenu`), Audio Language (`AudioTrackMenu`), Speed (`PlaybackRateSubmenu`), and Captions (`CaptionsSubmenu`) must all be presented through Video.js's native gear menu popup.
 
-2. **The Multi-Rendition HLS Master Playlist Invariant**:
+2. **Native Audio Language Control & Multi-Audio Invariant**:
+   - Video.js's native `AudioTrackRadioGroupCore` checks `availability = media.audioTrackList.length > 1 ? "available" : "unavailable"`.
+   - If a stream only reports 0 or 1 audio track, Video.js sets `hidden: true` and completely hides the Audio row from the settings menu.
+   - To guarantee the **Audio / Language control row is always visible and functional** alongside Quality and Speed:
+     - The player bridge uses `useMedia()` to access the underlying player adapter (`MediaTracksMixin`).
+     - Available audio languages (from `availableAudio`, VidSync multi-lang streams, or default language options) are dynamically synchronized via `media.addAudioTrack(kind, label, language)`.
+     - When the user selects a language in the native Audio slide-in menu, the player listens to `media.audioTracks` `"change"` events and seamlessly switches stream playback (or seeks to timestamp if different stream URLs exist).
+
+3. **Streaming Mirror Server Order**:
+   - **Server 1**: `Direct CDN` (`VidSync` for Movies/TV, `ReCloud` for Anime) - Instant playback, ad-free, 4K/1080p.
+   - **Server 2**: `Multi HD` (`EmbedWave` / `nxsha.space` AwsPly multi-lang embed) - Multi-Language Audio & 1080p.
+   - **Server 3**: `VidLink` (`vidlink.pro`) - Fast, resilient 1080p stream.
+   - **Server 4**: `VidStuck` (`vidstuck.cc`) - High reliability fallback.
+   - *Note*: `TheOGPirateBot` has been permanently removed due to connection timeouts and upstream handshake failures.
+
+4. **The Multi-Rendition HLS Master Playlist Invariant**:
    - Video.js's native `QualityRadioGroupCore` checks `availability = media.videoRenditionList.length > 1 ? "available" : "unavailable"`.
    - If a stream playlist only contains 1 level (e.g. single 720p `.m3u8`), Video.js sets `hidden: true` and **completely hides the Quality row from the settings menu**, leaving only "Speed".
    - **To guarantee the Quality row is always visible**, the player and resolver MUST supply a multi-rendition HLS Master Playlist (`#EXT-X-STREAM-INF`) combining all available levels (1080p, 720p, 480p) via `/api/hls-master` and client-side blob synthesis.
 
-3. **VidSync TMDb Numeric ID Strict Requirement**:
+5. **VidSync TMDb Numeric ID Strict Requirement**:
    - VidSync's upstream worker cluster routes media through FNV-1a sharded hashing strictly using **numeric TMDb IDs**.
    - **NEVER** pass IMDb IDs (`tt...`) into VidSync's `id` parameter. String IDs produce hash collisions that serve completely unrelated films or series (e.g. returning a random Hindi film or foreign drama instead of the requested title).
 
-4. **Mandatory Upstream Title Validation Guard**:
+6. **Mandatory Upstream Title Validation Guard**:
    - Upstream shards frequently return candidate objects containing unrelated titles.
    - Always sanitize and compare `source.title` against the requested media title using string normalization and similarity matching.
    - Reject any candidate whose title does not match (e.g. requesting "Castle Rock" but receiving "Castle").
 
-5. **Cross-Type (`movie <-> tv`) Fallback**:
+7. **Cross-Type (`movie <-> tv`) Fallback**:
    - Some entries (e.g. miniseries, TV movies, or catalog anomalies like TMDb `60948` *On the Comet*) exist in upstream shards as `tv` instead of `movie` (or vice-versa).
    - If querying with the primary type yields 0 valid streams, automatically execute a fallback query with the alternate type.
 
-6. **Dedicated Upstream Subtitle Catalog**:
+8. **Dedicated Upstream Subtitle Catalog**:
    - Query `${shard}/api/subtitles?id=${tmdbId}&type=${type}` in parallel with streams to pull the full 60+ language WebVTT catalog (matching `vidsync.pro/demo`).
 
 ---

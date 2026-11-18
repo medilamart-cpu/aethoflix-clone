@@ -3,8 +3,9 @@
 import React, { useRef, useEffect, useState, useMemo } from "react";
 import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
+import { useMedia } from "@videojs/react";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Volume2 } from "lucide-react";
 
 export interface QualityItem {
   quality: string;
@@ -36,6 +37,7 @@ export interface VideoJSPlayerProps {
   subtitles?: SubtitleTrack[];
   availableAudio?: AudioItem[] | string[] | any;
   availableQualities?: QualityItem[] | string[] | any;
+  onAudioChange?: (audio: any) => void;
   onReady?: (player: any) => void;
   onError?: (error: any) => void;
   onFirstFrame?: () => void;
@@ -49,20 +51,153 @@ function PlayerStateBridge({
   storageKey,
   onFirstFrame,
   onError,
+  availableAudio,
+  onAudioChange,
 }: {
   storageKey?: string;
   onFirstFrame?: () => void;
   onError?: (err: any) => void;
+  availableAudio?: AudioItem[] | string[] | any;
+  onAudioChange?: (audio: any) => void;
 }) {
   const store = usePlayer();
+  const media = useMedia() as any;
   const currentTime = usePlayer((s: any) => s?.currentTime ?? 0);
   const duration = usePlayer((s: any) => s?.duration ?? 0);
   const paused = usePlayer((s: any) => s?.paused ?? true);
   const error = usePlayer((s: any) => s?.error);
 
   const [resumedNotice, setResumedNotice] = useState<string | null>(null);
+  const [audioNotice, setAudioNotice] = useState<string | null>(null);
   const hasResumedRef = useRef(false);
   const hasNotifiedFirstFrameRef = useRef(false);
+  const populatingAudioRef = useRef(false);
+
+  // Normalize audio candidate list
+  const normalizedAudios = useMemo(() => {
+    const list: Array<{ id: string; label: string; language: string; url?: string }> = [];
+
+    if (Array.isArray(availableAudio) && availableAudio.length > 0) {
+      availableAudio.forEach((item: any, idx: number) => {
+        if (typeof item === "string") {
+          const lang = item.trim();
+          if (lang) {
+            list.push({
+              id: `audio-${idx}`,
+              label: lang.charAt(0).toUpperCase() + lang.slice(1),
+              language: lang.toLowerCase(),
+            });
+          }
+        } else if (item && typeof item === "object") {
+          const lang = (item.language || item.lang || "en").toLowerCase();
+          const label = item.label || item.language || `Track ${idx + 1}`;
+          list.push({
+            id: `audio-${idx}`,
+            label,
+            language: lang,
+            url: item.url,
+          });
+        }
+      });
+    } else if (typeof availableAudio === "string" && availableAudio.trim()) {
+      const parts = availableAudio.split(",");
+      parts.forEach((p: string, idx: number) => {
+        const lang = p.trim();
+        if (lang) {
+          list.push({
+            id: `audio-${idx}`,
+            label: lang.charAt(0).toUpperCase() + lang.slice(1),
+            language: lang.toLowerCase(),
+          });
+        }
+      });
+    }
+
+    // Always ensure at least 2 tracks so AudioTrackMenu is never hidden by AudioTrackRadioGroupCore
+    if (list.length <= 1) {
+      const primary = list[0]?.label || "English (Original)";
+      list.length = 0;
+      list.push(
+        { id: "audio-default", label: primary, language: "en" },
+        { id: "audio-multi", label: "Multi-Audio / Stereo", language: "mul" }
+      );
+    }
+
+    return list;
+  }, [availableAudio]);
+
+  // Sync available audio tracks into media.audioTracks so Video.js native Audio menu is displayed
+  useEffect(() => {
+    if (!media) return;
+
+    const populateAudioTracks = () => {
+      if (populatingAudioRef.current) return;
+      if (!media.audioTracks) return;
+
+      // If tracks already present and match or exceed our list, don't overwrite
+      if (media.audioTracks.length >= normalizedAudios.length) return;
+
+      populatingAudioRef.current = true;
+      try {
+        if (typeof media.removeAudioTrack === "function") {
+          const existing = [...media.audioTracks];
+          for (const t of existing) {
+            media.removeAudioTrack(t);
+          }
+        }
+
+        normalizedAudios.forEach((item, idx) => {
+          if (typeof media.addAudioTrack === "function") {
+            const track = media.addAudioTrack(idx === 0 ? "main" : "alternative", item.label, item.language);
+            if (track) {
+              track.id = item.id;
+              if (idx === 0) track.enabled = true;
+            }
+          }
+        });
+      } catch { }
+
+      setTimeout(() => {
+        populatingAudioRef.current = false;
+      }, 80);
+    };
+
+    populateAudioTracks();
+
+    // Listen for media readiness & track list changes to maintain tracks
+    const onMediaReady = () => populateAudioTracks();
+    media.addEventListener?.("loadedmetadata", onMediaReady);
+    media.addEventListener?.("canplay", onMediaReady);
+
+    // Listen for user audio track switch in native Video.js menu
+    const onTrackChange = () => {
+      if (populatingAudioRef.current || !media.audioTracks) return;
+      try {
+        const tracks = [...media.audioTracks];
+        const selected = tracks.find((t: any) => t.enabled);
+        if (selected) {
+          const matched = normalizedAudios.find(
+            (r) => r.id === selected.id || r.label === selected.label || r.language === selected.language
+          );
+          const trackLabel = matched?.label || selected.label || "Audio Track";
+          setAudioNotice(`Audio: ${trackLabel}`);
+          setTimeout(() => setAudioNotice(null), 3000);
+
+          if (matched?.url && onAudioChange) {
+            onAudioChange(matched);
+          }
+        }
+      } catch { }
+    };
+
+    media.audioTracks?.addEventListener?.("change", onTrackChange);
+
+    return () => {
+      media.removeEventListener?.("loadedmetadata", onMediaReady);
+      media.removeEventListener?.("canplay", onMediaReady);
+      media.audioTracks?.removeEventListener?.("change", onTrackChange);
+    };
+  }, [media, normalizedAudios, onAudioChange]);
 
   // Format MM:SS helper
   const formatTime = (secs: number) => {
@@ -134,6 +269,14 @@ function PlayerStateBridge({
           <span>{resumedNotice}</span>
         </div>
       )}
+
+      {/* Audio Language Toast */}
+      {audioNotice && (
+        <div className="absolute top-4 right-4 z-30 pointer-events-none flex items-center gap-2 rounded-xl bg-black/85 px-3.5 py-1.5 text-xs font-medium text-white shadow-xl border border-white/15 backdrop-blur-md animate-in fade-in duration-200">
+          <Volume2 className="h-3.5 w-3.5 text-red-500" />
+          <span>{audioNotice}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -155,19 +298,34 @@ export function VideoJSPlayer({
   controls = true,
   className = "",
   subtitles = [],
+  availableAudio,
   availableQualities,
   storageKey,
+  onAudioChange,
   onError,
   onFirstFrame,
 }: VideoJSPlayerProps) {
-  const isHls =
-    src.includes(".m3u8") ||
-    (!src.includes(".mp4") && !src.includes(".webm"));
+  const [activeSrc, setActiveSrc] = useState(src);
 
-  // Ensure Video.js native Quality menu has multi-rendition levels to display
+  useEffect(() => {
+    setActiveSrc(src);
+  }, [src]);
+
+  const handleAudioSelect = (audioItem: any) => {
+    if (audioItem?.url && audioItem.url !== activeSrc) {
+      setActiveSrc(audioItem.url);
+    }
+    onAudioChange?.(audioItem);
+  };
+
+  const isHls =
+    activeSrc.includes(".m3u8") ||
+    (!activeSrc.includes(".mp4") && !activeSrc.includes(".webm"));
+
+  // Ensure Video.js native Quality and Audio menus have multi-rendition levels to display
   const effectiveSrc = useMemo(() => {
-    if (!src || !isHls) return src;
-    if (src.startsWith("/api/hls-master")) return src;
+    if (!activeSrc || !isHls) return activeSrc;
+    if (activeSrc.startsWith("/api/hls-master")) return activeSrc;
 
     // Collect all candidate HLS stream renditions
     let hlsQualities: Array<{ quality: string; url: string }> = [];
@@ -181,22 +339,58 @@ export function VideoJSPlayer({
     }
 
     // Auto-detect paired resolution for single-level Castle HLS streams (e.g. 720p <-> 480p)
-    if (hlsQualities.length <= 1 && src.includes("/720/")) {
+    if (hlsQualities.length <= 1 && activeSrc.includes("/720/")) {
       hlsQualities = [
-        { quality: "720p", url: src },
-        { quality: "480p", url: src.replace("/720/", "/480/") },
+        { quality: "720p", url: activeSrc },
+        { quality: "480p", url: activeSrc.replace("/720/", "/480/") },
       ];
-    } else if (hlsQualities.length <= 1 && src.includes("/1080/")) {
+    } else if (hlsQualities.length <= 1 && activeSrc.includes("/1080/")) {
       hlsQualities = [
-        { quality: "1080p", url: src },
-        { quality: "720p", url: src.replace("/1080/", "/720/") },
-        { quality: "480p", url: src.replace("/1080/", "/480/") },
+        { quality: "1080p", url: activeSrc },
+        { quality: "720p", url: activeSrc.replace("/1080/", "/720/") },
+        { quality: "480p", url: activeSrc.replace("/1080/", "/480/") },
       ];
     }
 
-    if (hlsQualities.length > 1 && typeof window !== "undefined") {
-      // Build standard HLS Master Playlist
+    // Collect all candidate Audio tracks
+    let hlsAudios: Array<{ language: string; label: string; url: string }> = [];
+    if (Array.isArray(availableAudio)) {
+      for (const a of availableAudio) {
+        if (a && typeof a === "object" && a.url) {
+          hlsAudios.push({
+            language: a.language || a.lang || "en",
+            label: a.label || a.language || "English",
+            url: a.url,
+          });
+        }
+      }
+    }
+
+    const hasMultipleQualities = hlsQualities.length > 1;
+    const hasMultipleAudios = hlsAudios.length > 1;
+
+    if ((hasMultipleQualities || hasMultipleAudios) && typeof window !== "undefined") {
       const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
+
+      // Audio tracks definition
+      if (hasMultipleAudios) {
+        const seenAudios = new Set<string>();
+        let isFirst = true;
+        for (const a of hlsAudios) {
+          const lang = a.language;
+          if (seenAudios.has(lang)) continue;
+          seenAudios.add(lang);
+
+          const isDefault = isFirst || lang === "en";
+          lines.push(
+            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
+          );
+          isFirst = false;
+        }
+      }
+
+      const audioAttr = hasMultipleAudios ? ',AUDIO="audio"' : "";
+
       const sorted = [...hlsQualities].sort((a, b) => {
         const hA = parseInt(a.quality) || 0;
         const hB = parseInt(b.quality) || 0;
@@ -228,7 +422,7 @@ export function VideoJSPlayer({
         }
 
         lines.push(
-          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
+          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height}${audioAttr},NAME="${label}"`
         );
         lines.push(q.url);
       }
@@ -238,8 +432,8 @@ export function VideoJSPlayer({
       return URL.createObjectURL(blob);
     }
 
-    return src;
-  }, [src, isHls, availableQualities]);
+    return activeSrc;
+  }, [activeSrc, isHls, availableQualities, availableAudio]);
 
   useEffect(() => {
     return () => {
@@ -256,6 +450,8 @@ export function VideoJSPlayer({
           storageKey={storageKey}
           onFirstFrame={onFirstFrame}
           onError={onError}
+          availableAudio={availableAudio}
+          onAudioChange={handleAudioSelect}
         />
         <VideoSkin
           style={
@@ -296,7 +492,7 @@ export function VideoJSPlayer({
             </HlsJsVideo>
           ) : (
             <Video
-              src={src}
+              src={activeSrc}
               playsInline
               preload="auto"
               crossOrigin="anonymous"

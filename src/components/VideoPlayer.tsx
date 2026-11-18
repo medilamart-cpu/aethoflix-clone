@@ -117,12 +117,7 @@ export function VideoPlayer({
     let isMounted = true;
     setIsFinalized(false);
 
-    // Direct stream resolution endpoints (TheOGPirateBot, ReCloud, VidSync)
-    const directTheOgUrl =
-      type === "movie" || type === "tv"
-        ? `/api/resolve-theog?type=${type}&id=${id}&s=${s}&e=${e}`
-        : "";
-
+    // Direct stream resolution endpoints (ReCloud for Anime, VidSync for Movies/TV)
     const directAnimeUrl =
       type === "anime" ? `/api/resolve-recloud?id=${id}&s=${s}&e=${e}` : "";
 
@@ -223,22 +218,6 @@ export function VideoPlayer({
               },
               true
             );
-
-            // Register Server 2 Direct CDN from secondary standby stream
-            if (res.secondaryStream?.playable) {
-              registerDirectStream(
-                {
-                  url: res.secondaryStream.playable,
-                  label: "Direct CDN (Server 2)",
-                  subtitles: res.subtitles || [],
-                  audio: "en",
-                  quality: "Auto",
-                  qualities: res.qualities || [],
-                  audioTracks: res.audioTracks || [],
-                },
-                false
-              );
-            }
           } else {
             markDirectFailed("Direct CDN (VidSync)");
           }
@@ -249,43 +228,7 @@ export function VideoPlayer({
         });
     }
 
-    // 2. Instant Direct Stream 2: TheOGPirateBot (Server 2)
-    if (directTheOgUrl) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => {
-        controller.abort();
-        markDirectFailed("Direct CDN (TheOGPirateBot)");
-      }, 3500);
-
-      fetch(directTheOgUrl, { signal: controller.signal })
-        .then((r) => {
-          if (!r.ok) throw new Error("Unavailable");
-          return r.json();
-        })
-        .then((res) => {
-          clearTimeout(timer);
-          if (res?.ok && res?.playable) {
-            registerDirectStream(
-              {
-                url: res.playable,
-                label: "Direct CDN (TheOGPirateBot)",
-                subtitles: res.subtitles || [],
-                audio: res.audio || ["en"],
-                quality: res.quality || "auto",
-              },
-              false
-            );
-          } else {
-            markDirectFailed("Direct CDN (TheOGPirateBot)");
-          }
-        })
-        .catch(() => {
-          clearTimeout(timer);
-          markDirectFailed("Direct CDN (TheOGPirateBot)");
-        });
-    }
-
-    // 3. Instant Direct Stream Anime: ReCloud
+    // 2. Instant Direct Stream Anime: ReCloud
     if (directAnimeUrl) {
       const controller = new AbortController();
       const timer = setTimeout(() => {
@@ -370,7 +313,13 @@ export function VideoPlayer({
   const allMirrors: Record<string, string> = useMemo(() => {
     const res: Record<string, string> = {};
 
-    // 1. Direct CDN 1 (VidSync for Movies/TV, ReCloud for Anime) - PRIMARY DEFAULT
+    const parts = routingKey.split(":");
+    const type = parts[0];
+    const id = parts[1];
+    const s = parts[2] || "1";
+    const e = parts[3] || "1";
+
+    // 1. Server 1: Direct CDN (VidSync for Movies/TV, ReCloud for Anime) - PRIMARY DEFAULT
     if (routingKey.startsWith("anime:")) {
       const recloudDirect = directStreams.find((d) => d.label.includes("ReCloud"));
       res["Direct CDN (ReCloud)"] = recloudDirect ? recloudDirect.url : "direct:pending:recloud";
@@ -379,29 +328,28 @@ export function VideoPlayer({
       res["Direct CDN (VidSync)"] = vidSyncDirect ? vidSyncDirect.url : "direct:pending:vidsync";
     }
 
-    // 2. Server 2: Direct CDN (Server 2) / TheOGPirateBot
-    if (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) {
-      const s2Direct = directStreams.find((d) => d.label.includes("Server 2") || d.label.includes("TheOG"));
-      if (s2Direct && !failedDirects.has(s2Direct.label)) {
-        res[s2Direct.label] = s2Direct.url;
-      } else if (!failedDirects.has("Direct CDN (Server 2)")) {
-        res["Direct CDN (Server 2)"] = "direct:pending:server2";
-      }
-    }
-
-    // 3. Server 3: Multi HD (EmbedWave / Nxsha with Multi-Lang Audio & 1080p)
-    const parts = routingKey.split(":");
-    const type = parts[0];
-    const id = parts[1];
-    const s = parts[2] || "1";
-    const e = parts[3] || "1";
+    // 2. Server 2: Multi HD (EmbedWave / Nxsha with Multi-Lang Audio & 1080p)
     if (type === "movie") {
       res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`;
     } else if (type === "tv") {
       res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`;
     }
 
-    // 4. Other clean mirrors (VidLink, VidFast, VidNest...)
+    // 3. Server 3: VidLink
+    if (type === "movie") {
+      res["VidLink"] = `https://vidlink.pro/movie/${id}?autoplay=true`;
+    } else if (type === "tv") {
+      res["VidLink"] = `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true`;
+    }
+
+    // 4. Server 4: VidStuck
+    if (type === "movie") {
+      res["VidStuck"] = `https://vidstuck.cc/embed/movie/${id}?autoplay=true`;
+    } else if (type === "tv") {
+      res["VidStuck"] = `https://vidstuck.cc/embed/tv/${id}/${s}/${e}?autoplay=true`;
+    }
+
+    // 5. Additional clean mirrors (VidFast, ZXCStream, etc. excluding TheOGPirateBot)
     for (const [key, val] of Object.entries(cleanMirrors)) {
       if (key.toLowerCase().includes("theog") || val.includes("theogpiratebot")) continue;
       if (key.toLowerCase().includes("recloud") || val.includes("4animo")) continue;
@@ -413,11 +361,13 @@ export function VideoPlayer({
       ) {
         continue;
       }
+      if (key.toLowerCase().includes("vidlink") || val.includes("vidlink.pro")) continue;
+      if (key.toLowerCase().includes("vidstuck") || val.includes("vidstuck.cc")) continue;
       res[key] = val;
     }
 
     return res;
-  }, [directStreams, cleanMirrors, routingKey, failedDirects]);
+  }, [directStreams, cleanMirrors, routingKey]);
 
   const mirrorKeys = useMemo(() => Object.keys(allMirrors), [allMirrors]);
   const [iframeError, setIframeError] = useState(false);

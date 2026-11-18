@@ -22,20 +22,20 @@ const CANDIDATE_PROVIDERS: CandidateProvider[] = [
       s && e ? `https://vidfast.vc/tv/${id}/${s}/${e}?autoPlay=true` : `https://vidfast.vc/movie/${id}?autoPlay=true`,
   },
   {
-    id: "theog",
-    provider: "TheOGPirateBot",
-    buildUrl: (id, s, e) =>
-      s && e
-        ? `https://embed.theogpiratebot.online/embed/tv/${id}/${s}/${e}?color=f4f4f4&autoplay=1&episodeSelector=1&autoplayNextEp=1`
-        : `https://embed.theogpiratebot.online/embed/movie/${id}?color=f4f4f4&autoplay=1`,
-  },
-  {
     id: "multihd",
     provider: "Multi HD",
     buildUrl: (id, s, e) =>
       s && e
         ? `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`
         : `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`,
+  },
+  {
+    id: "vidstuck",
+    provider: "VidStuck",
+    buildUrl: (id, s, e) =>
+      s && e
+        ? `https://vidstuck.cc/embed/tv/${id}/${s}/${e}?autoplay=true`
+        : `https://vidstuck.cc/embed/movie/${id}?autoplay=true`,
   },
   {
     id: "vidnest",

@@ -53,14 +53,17 @@ const PRESET_SERIES = [
 
 const SERVERS: ServerSpec[] = [
   {
-    id: "direct-theog",
-    name: "Direct CDN (TheOGPirateBot)",
-    domain: "embed.theogpiratebot.online",
-    ads: "Zero (Raw HLS Stream)",
-    free: "Yes (No ads, multi-audio)",
-    notes: "Direct HLS adaptive streaming via Elfura session API with English & Hindi audio inside Video.js.",
-    type: "direct",
-    buildUrl: () => "",
+    id: "server-multihd",
+    name: "Server 2 (Multi HD)",
+    domain: "nxsha.space",
+    ads: "Low (Sandbox Protected)",
+    free: "Yes (Multi-Lang Audio)",
+    notes: "Multi-Language audio streams with 1080p high bitrate playback via AwsPly.",
+    type: "embed",
+    buildUrl: (id, s, e) =>
+      s && e
+        ? `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`
+        : `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`,
   },
   {
     id: "direct-recloud",

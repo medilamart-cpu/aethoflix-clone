@@ -444,15 +444,19 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Multi-rendition HLS Master Playlist: when multiple discrete stream qualities exist,
-        // construct a master playlist so Video.js's native Quality menu detects all renditions.
+        // Multi-rendition HLS Master Playlist: when multiple discrete stream qualities or
+        // audio languages exist, construct a master playlist so Video.js's native Quality and Audio menus detect all tracks.
         const hlsStreams = aggregatedQualities.filter(
           (q) => q && q.url && q.url.includes(".m3u8")
         );
 
         let finalPlayable = url;
-        if (hlsStreams.length > 1) {
-          const encoded = Buffer.from(JSON.stringify(hlsStreams)).toString("base64");
+        if (hlsStreams.length > 1 || aggregatedAudioTracks.length > 1) {
+          const payload = {
+            qualities: hlsStreams,
+            audios: aggregatedAudioTracks,
+          };
+          const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
           finalPlayable = `/api/hls-master?data=${encodeURIComponent(encoded)}`;
         }
 
