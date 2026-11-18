@@ -180,29 +180,8 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
 ];
 
 export function isProviderSandboxCompatible(urlOrLabel?: string | null): boolean {
-  if (!urlOrLabel) return false;
-  const lower = urlOrLabel.toLowerCase();
-
-  // EXPLICITLY DO NOT SANDBOX: VidLink, VidSrc, or any server that requires full frame permissions
-  if (
-    lower.includes("vidlink") ||
-    lower.includes("vidsrc") ||
-    lower.includes("vidsrc.pm") ||
-    lower.includes("vidsrc.xyz")
-  ) {
-    return false;
-  }
-
-  // ONLY sandbox EmbedWave, Nxsha, Multi HD where user specifically requested ad/popup blocking
-  if (
-    lower.includes("embedwave") ||
-    lower.includes("nxsha") ||
-    lower.includes("multihd") ||
-    lower.includes("multi hd")
-  ) {
-    return true;
-  }
-
+  // Disable iframe sandbox restrictions so multi-language audio, quality switching,
+  // subtitles, and full playback work cleanly without being blocked by browser sandbox restrictions
   return false;
 }
 

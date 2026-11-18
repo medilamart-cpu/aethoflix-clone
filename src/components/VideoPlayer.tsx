@@ -199,7 +199,7 @@ export function VideoPlayer({
       const timer = setTimeout(() => {
         controller.abort();
         markDirectFailed("Direct CDN (VidSync)");
-      }, 3500);
+      }, 10000);
 
       fetch(directTgUrl, { signal: controller.signal })
         .then((r) => {
@@ -353,29 +353,16 @@ export function VideoPlayer({
     // 1. Direct CDN 1 (VidSync for Movies/TV, ReCloud for Anime) - PRIMARY DEFAULT
     if (routingKey.startsWith("anime:")) {
       const recloudDirect = directStreams.find((d) => d.label.includes("ReCloud"));
-      if (recloudDirect) {
-        res["Direct CDN (ReCloud)"] = recloudDirect.url;
-      } else if (!failedDirects.has("Direct CDN (ReCloud)")) {
-        res["Direct CDN (ReCloud)"] = "direct:pending:recloud";
-      }
+      res["Direct CDN (ReCloud)"] = recloudDirect ? recloudDirect.url : "direct:pending:recloud";
     } else {
       const vidSyncDirect = directStreams.find((d) => d.label.includes("VidSync"));
-      if (vidSyncDirect) {
-        res["Direct CDN (VidSync)"] = vidSyncDirect.url;
-      } else if (!failedDirects.has("Direct CDN (VidSync)")) {
-        res["Direct CDN (VidSync)"] = "direct:pending:vidsync";
-      }
+      res["Direct CDN (VidSync)"] = vidSyncDirect ? vidSyncDirect.url : "direct:pending:vidsync";
     }
 
     // 2. Server 2: TheOGPirateBot (OGPirate)
     const theOgDirect = directStreams.find((d) => d.label.includes("TheOG"));
-    if (theOgDirect) {
-      res["Direct CDN (TheOGPirateBot)"] = theOgDirect.url;
-    } else if (
-      (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) &&
-      !failedDirects.has("Direct CDN (TheOGPirateBot)")
-    ) {
-      res["Direct CDN (TheOGPirateBot)"] = "direct:pending:theog";
+    if (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) {
+      res["Direct CDN (TheOGPirateBot)"] = theOgDirect ? theOgDirect.url : "direct:pending:theog";
     }
 
     // 3. Server 3: Multi HD (EmbedWave / Nxsha with Multi-Lang Audio & 1080p)
@@ -385,9 +372,9 @@ export function VideoPlayer({
     const s = parts[2] || "1";
     const e = parts[3] || "1";
     if (type === "movie") {
-      res["Multi HD (EmbedWave)"] = `https://embedwave.cc/embed/movie/${id}`;
+      res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`;
     } else if (type === "tv") {
-      res["Multi HD (EmbedWave)"] = `https://embedwave.cc/embed/tv/${id}/${s}/${e}`;
+      res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`;
     }
 
     // 4. Other clean mirrors (VidLink, VidFast, VidNest...)
@@ -694,7 +681,7 @@ export function VideoPlayer({
         })()}
 
         {/* Cinematic Direct CDN Loading Animation (VidStuck / ZXCStream / TG Vid style) */}
-        {(isPendingDirect || (isDirectStream && showDirectLoader)) && (
+        {(isPendingDirect || (isDirectStream && showDirectLoader)) && !failedDirects.has(selectedMirror || "") && (
           <div
             className={`absolute inset-0 z-20 transition-all duration-300 pointer-events-none ${
               !isPendingDirect && !isDirectLoading

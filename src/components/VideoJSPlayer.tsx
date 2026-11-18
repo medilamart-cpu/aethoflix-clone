@@ -157,7 +157,7 @@ export function VideoJSPlayer({
           const onBeginIOS = function () {
             video.removeEventListener("webkitbeginfullscreen", onBeginIOS);
             if (wasPlaying && video.paused) {
-              video.play().catch(() => {});
+              video.play().catch(() => { });
             }
           };
           video.addEventListener("webkitbeginfullscreen", onBeginIOS);
@@ -165,7 +165,7 @@ export function VideoJSPlayer({
           const onExitIOS = function () {
             video.removeEventListener("webkitendfullscreen", onExitIOS);
             if (wasPlaying && video.paused) {
-              video.play().catch(() => {});
+              video.play().catch(() => { });
             }
           };
           video.addEventListener("webkitendfullscreen", onExitIOS);
@@ -194,7 +194,7 @@ export function VideoJSPlayer({
               document.removeEventListener("fullscreenchange", onFsChange);
               document.removeEventListener("webkitfullscreenchange", onFsChange);
               if (wasPlaying && video.paused) {
-                video.play().catch(() => {});
+                video.play().catch(() => { });
               }
             }
           };
@@ -226,7 +226,7 @@ export function VideoJSPlayer({
         try {
           reqCont.call(cont);
           return true;
-        } catch {}
+        } catch { }
       }
       return false;
     }
@@ -391,7 +391,7 @@ export function VideoJSPlayer({
                 setTimeout(() => setResumedNotice(null), 3500);
               }
             }
-          } catch {}
+          } catch { }
         }
 
         // First frame playback detection
@@ -580,7 +580,7 @@ export function VideoJSPlayer({
       if (ct && ct > 5 && dur && dur - ct > 15) {
         try {
           localStorage.setItem(`aethoflix_resume_${key}`, String(Math.floor(ct)));
-        } catch {}
+        } catch { }
       }
     });
 
@@ -589,7 +589,7 @@ export function VideoJSPlayer({
       if (key) {
         try {
           localStorage.removeItem(`aethoflix_resume_${key}`);
-        } catch {}
+        } catch { }
       }
     });
 
@@ -605,7 +605,7 @@ export function VideoJSPlayer({
       if (vjsPlayerRef.current && !vjsPlayerRef.current.isDisposed()) {
         try {
           vjsPlayerRef.current.dispose();
-        } catch {}
+        } catch { }
         vjsPlayerRef.current = null;
       }
       if (container) {
@@ -649,11 +649,10 @@ export function VideoJSPlayer({
         <button
           type="button"
           onClick={() => setIsSettingsOpen((o) => !o)}
-          className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium backdrop-blur-xl transition-all duration-200 cursor-pointer shadow-2xl ${
-            isSettingsOpen
+          className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium backdrop-blur-xl transition-all duration-200 cursor-pointer shadow-2xl ${isSettingsOpen
               ? "bg-[#e50914] text-white ring-2 ring-red-500/50"
               : "bg-black/75 text-white/90 border border-white/15 hover:bg-black/90 hover:text-white hover:border-white/30"
-          }`}
+            }`}
           title="Playback Settings (Quality, Audio, Subtitles, Speed)"
         >
           <SlidersHorizontal className="h-3.5 w-3.5 text-cyan-400" />
@@ -698,11 +697,10 @@ export function VideoJSPlayer({
               <button
                 type="button"
                 onClick={() => setActiveTab("quality")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${
-                  activeTab === "quality"
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${activeTab === "quality"
                     ? "bg-[#e50914] text-white shadow-md"
                     : "text-neutral-400 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>Quality</span>
@@ -711,11 +709,10 @@ export function VideoJSPlayer({
               <button
                 type="button"
                 onClick={() => setActiveTab("audio")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${
-                  activeTab === "audio"
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${activeTab === "audio"
                     ? "bg-[#e50914] text-white shadow-md"
                     : "text-neutral-400 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 <Volume2 className="h-3.5 w-3.5" />
                 <span>Audio</span>
@@ -724,11 +721,10 @@ export function VideoJSPlayer({
               <button
                 type="button"
                 onClick={() => setActiveTab("subtitles")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${
-                  activeTab === "subtitles"
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${activeTab === "subtitles"
                     ? "bg-[#e50914] text-white shadow-md"
                     : "text-neutral-400 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 <Subtitles className="h-3.5 w-3.5" />
                 <span>Subtitles</span>
@@ -737,11 +733,10 @@ export function VideoJSPlayer({
               <button
                 type="button"
                 onClick={() => setActiveTab("speed")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${
-                  activeTab === "speed"
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-all cursor-pointer ${activeTab === "speed"
                     ? "bg-[#e50914] text-white shadow-md"
                     : "text-neutral-400 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 <Gauge className="h-3.5 w-3.5" />
                 <span>Speed</span>
@@ -756,11 +751,10 @@ export function VideoJSPlayer({
                   <button
                     type="button"
                     onClick={() => handleSelectQuality("auto")}
-                    className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                      selectedQuality === "auto"
+                    className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedQuality === "auto"
                         ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                         : "hover:bg-white/5 text-neutral-300"
-                    }`}
+                      }`}
                   >
                     <div className="flex flex-col text-left">
                       <span className="font-semibold">Auto (Recommended)</span>
@@ -774,11 +768,10 @@ export function VideoJSPlayer({
                       key={q.id}
                       type="button"
                       onClick={() => handleSelectQuality(q.height)}
-                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                        selectedQuality === q.height
+                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedQuality === q.height
                           ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                           : "hover:bg-white/5 text-neutral-300"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="font-semibold font-mono tabular-nums">{q.label}</span>
@@ -812,11 +805,10 @@ export function VideoJSPlayer({
                         key={`audio-${a.index}`}
                         type="button"
                         onClick={() => handleSelectAudio(a.index)}
-                        className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                          selectedAudioIndex === a.index
+                        className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedAudioIndex === a.index
                             ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                             : "hover:bg-white/5 text-neutral-300"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <Volume2 className="h-3.5 w-3.5 text-neutral-400" />
@@ -840,11 +832,10 @@ export function VideoJSPlayer({
                   <button
                     type="button"
                     onClick={() => handleSelectSubtitle("off")}
-                    className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                      selectedSubtitle === "off"
+                    className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedSubtitle === "off"
                         ? "bg-red-500/20 text-red-300 border border-red-500/40"
                         : "hover:bg-white/5 text-neutral-300"
-                    }`}
+                      }`}
                   >
                     <span>Subtitles Off</span>
                     {selectedSubtitle === "off" && <Check className="h-4 w-4 text-red-400" />}
@@ -855,11 +846,10 @@ export function VideoJSPlayer({
                       key={s.id}
                       type="button"
                       onClick={() => handleSelectSubtitle(s.id)}
-                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                        selectedSubtitle === s.id
+                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedSubtitle === s.id
                           ? "bg-red-500/20 text-red-300 border border-red-500/40"
                           : "hover:bg-white/5 text-neutral-300"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <Subtitles className="h-3.5 w-3.5 text-neutral-400" />
@@ -884,11 +874,10 @@ export function VideoJSPlayer({
                       key={`speed-${sp}`}
                       type="button"
                       onClick={() => handleSelectSpeed(sp)}
-                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${
-                        selectedSpeed === sp
+                      className={`w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-medium transition-all cursor-pointer ${selectedSpeed === sp
                           ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                           : "hover:bg-white/5 text-neutral-300"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2 font-mono tabular-nums">
                         <span>{sp === 1 ? "1.0x (Normal)" : `${sp}x`}</span>

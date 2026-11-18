@@ -127,18 +127,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Prioritize IMDb ID (e.g. tt3148266) first to prevent TMDb numeric ID collisions on scrapers
-    // For TV shows: if an IMDb ID is provided and returns 0 sources, do not fall back to raw numeric ID
-    // because third-party scraper databases collide numeric IDs with unrelated shows (e.g. TMDb 60948 -> Castle)
-    const queryIds = imdb ? (type === "tv" ? [imdb] : [imdb, id].filter(Boolean) as string[]) : [id].filter(Boolean) as string[];
+    // TMDb numeric ID is required for VidSync TV shows and movies
+    const queryIds = [id, imdb].filter(Boolean) as string[];
     let candidateSources: VidSyncSource[] = [];
 
-    // Query VidSync Cloudflare Worker shard cluster with both TMDb and IMDb IDs
+    // Query VidSync Cloudflare Worker shard cluster
     for (const currentId of queryIds) {
       const key = `${type}-${currentId}-${season}-${episode}`;
 
-      for (let offset = 0; offset < 3; offset++) {
-        const shard = getShard(key, offset);
+      // Query known live shard first, plus hashed shards for redundancy
+      const targetShards = [
+        "https://vidsync-shard.vs-sharaparvin76.workers.dev",
+        getShard(key, 0),
+        getShard(key, 1),
+      ];
+      const uniqueShards = [...new Set(targetShards)];
+
+      for (const shard of uniqueShards) {
         const queryParams = new URLSearchParams({
           type,
           id: currentId,
@@ -155,7 +160,7 @@ export async function GET(request: NextRequest) {
               "User-Agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
-            signal: AbortSignal.timeout(3500),
+            signal: AbortSignal.timeout(4000),
           });
 
           if (!res.ok) continue;
