@@ -654,13 +654,6 @@ export function VideoPlayer({
               storageKey={routingKey}
               onError={handleDirectError}
               onFirstFrame={handleFirstFrame}
-              onAudioChange={(audioItem: any) => {
-                if (audioItem?.url && audioItem.url !== directStreamUrl) {
-                  setDirectStreams((prev) =>
-                    prev.map((d) => (d.label === selectedMirror ? { ...d, url: audioItem.url } : d))
-                  );
-                }
-              }}
             />
           );
         })()}

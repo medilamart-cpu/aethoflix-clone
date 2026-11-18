@@ -74,6 +74,7 @@ function PlayerStateBridge({
   const populatingAudioRef = useRef(false);
 
   const userSelectedAudioRef = useRef(false);
+  const hasAutoSelectedRef = useRef(false);
 
   // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
@@ -133,8 +134,9 @@ function PlayerStateBridge({
     if (!media) return;
 
     // Helper to auto-select English if default track is foreign (e.g. Hindi track 0)
+    // Runs AT MOST ONCE on initial stream launch and NEVER overrides user selection
     const maybeAutoSelectEnglish = () => {
-      if (userSelectedAudioRef.current) return;
+      if (userSelectedAudioRef.current || hasAutoSelectedRef.current) return;
       const engine = media.engine;
       if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 1) {
         const engIdx = engine.audioTracks.findIndex((t: any) => {
@@ -142,9 +144,12 @@ function PlayerStateBridge({
           const n = (t.name || "").toLowerCase();
           return l === "en" || l === "eng" || n.includes("english");
         });
-        if (engIdx !== -1 && engine.audioTrack !== engIdx) {
-          console.log(`[VideoJS] Auto-selecting English audio track at index ${engIdx}`);
-          engine.audioTrack = engIdx;
+        if (engIdx !== -1) {
+          hasAutoSelectedRef.current = true;
+          if (engine.audioTrack !== engIdx) {
+            console.log(`[VideoJS] Auto-selecting initial English audio track at index ${engIdx}`);
+            engine.audioTrack = engIdx;
+          }
         }
       }
     };
@@ -193,6 +198,7 @@ function PlayerStateBridge({
         const selected = tracks.find((t: any) => t.enabled);
         if (selected) {
           userSelectedAudioRef.current = true;
+          hasAutoSelectedRef.current = true;
 
           const selectedLang = (selected.language || "").toLowerCase();
           const selectedLabel = (selected.label || "").toLowerCase();
@@ -229,7 +235,7 @@ function PlayerStateBridge({
             }
           }
 
-          // 2. Find matched info for toast and optional onAudioChange URL switch
+          // 2. Find matched info for toast
           const matched = normalizedAudios.find(
             (r) =>
               r.id === selected.id ||
@@ -238,13 +244,9 @@ function PlayerStateBridge({
                 (r.label.toLowerCase().includes(selectedLabel) || selectedLabel.includes(r.label.toLowerCase())))
           );
 
-          const trackLabel = matched?.label || selected.label || "Audio Track";
+          const trackLabel = selected.label || matched?.label || "Audio Track";
           setAudioNotice(`Audio: ${trackLabel}`);
           setTimeout(() => setAudioNotice(null), 3000);
-
-          if (matched?.url && onAudioChange) {
-            onAudioChange(matched);
-          }
         }
       } catch (err) {
         console.warn("[VideoJS] Error switching audio track:", err);

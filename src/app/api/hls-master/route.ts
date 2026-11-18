@@ -49,44 +49,39 @@ export async function GET(req: NextRequest) {
 
     // Filter to valid audio tracks
     const validAudios = audios.filter((a) => a && a.url && a.url.startsWith("http"));
-    const hasAudios = validAudios.length > 1;
 
-    // Output Audio Track definitions (#EXT-X-MEDIA:TYPE=AUDIO)
-    if (hasAudios) {
+    // Check if there are genuine discrete audio-only renditions (e.g. .aac, .m4a).
+    // For multiplexed streams, the MPEG-TS segments already contain the elementary audio streams
+    // with their native PMT descriptors (hin, eng, tam, tel). Emitting synthetic #EXT-X-MEDIA tags
+    // in arbitrary order misaligns track indexes with the physical audio PIDs in the TS file,
+    // which caused "English" to play Hindi audio!
+    const pureAudioTracks = validAudios.filter(
+      (a) =>
+        a.url &&
+        (a.url.endsWith(".aac") ||
+          a.url.endsWith(".m4a") ||
+          a.url.includes("audio-only") ||
+          a.url.includes("/audio/"))
+    );
+
+    const hasExternalAudios = pureAudioTracks.length > 1;
+    if (hasExternalAudios) {
       const seenAudios = new Set<string>();
-      const hasEnglish = validAudios.some(
-        (a) => (a.language || "").toLowerCase() === "en" || a.label?.toLowerCase().includes("english")
-      );
-
-      for (const a of validAudios) {
+      for (const a of pureAudioTracks) {
         const lang = a.language || "en";
         if (seenAudios.has(lang)) continue;
         seenAudios.add(lang);
 
         const label = a.label || lang.toUpperCase();
-        const isDefault = hasEnglish
-          ? lang === "en" || label.toLowerCase().includes("english")
-          : seenAudios.size === 1;
-
-        // RFC 8216 Section 4.3.4.1: A URI attribute MUST NOT be included if the Media Segments
-        // contain the elementary audio streams (multiplexed). Setting URI to a video m3u8
-        // causes mobile players (iOS Safari / AVPlayer / Android) to choke on video packets
-        // in the audio buffer, causing infinite loading.
-        const isPureAudioStream =
-          a.url &&
-          (a.url.endsWith(".aac") ||
-            a.url.endsWith(".m4a") ||
-            a.url.includes("audio-only") ||
-            a.url.includes("/audio/"));
-        const uriAttr = isPureAudioStream ? `,URI="${a.url}"` : "";
+        const isDefault = lang === "en" || label.toLowerCase().includes("english");
 
         lines.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"${uriAttr}`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
         );
       }
     }
 
-    const audioAttr = hasAudios ? ',AUDIO="audio"' : "";
+    const audioAttr = hasExternalAudios ? ',AUDIO="audio"' : "";
 
     for (const q of sortedQualities) {
       const label = q.quality || "720p";
