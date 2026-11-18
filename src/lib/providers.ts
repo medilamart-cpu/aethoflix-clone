@@ -189,9 +189,19 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
 ];
 
 export function isProviderSandboxCompatible(urlOrLabel?: string | null): boolean {
-  // Disable iframe sandbox restrictions so multi-language audio, quality switching,
-  // subtitles, and full playback work cleanly without being blocked by browser sandbox restrictions
-  return false;
+  if (!urlOrLabel) return false;
+  const l = urlOrLabel.toLowerCase();
+  // Enable stealth ad-shield sandbox for TG Vid, MoviesNexus, EmbedWave, VidLink, VidStuck, etc.
+  // This blocks window.open, popup ads, and tab redirects while allowing video, audio, and fullscreen to function cleanly
+  return (
+    l.includes("tgvid") ||
+    l.includes("moviesnexus") ||
+    l.includes("lovable.app") ||
+    l.includes("embedwave") ||
+    l.includes("nxsha") ||
+    l.includes("vidlink") ||
+    l.includes("vidstuck")
+  );
 }
 
 /**
