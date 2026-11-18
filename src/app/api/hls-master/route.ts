@@ -54,18 +54,35 @@ export async function GET(req: NextRequest) {
     // Output Audio Track definitions (#EXT-X-MEDIA:TYPE=AUDIO)
     if (hasAudios) {
       const seenAudios = new Set<string>();
-      let isFirst = true;
+      const hasEnglish = validAudios.some(
+        (a) => (a.language || "").toLowerCase() === "en" || a.label?.toLowerCase().includes("english")
+      );
+
       for (const a of validAudios) {
         const lang = a.language || "en";
         if (seenAudios.has(lang)) continue;
         seenAudios.add(lang);
 
         const label = a.label || lang.toUpperCase();
-        const isDefault = isFirst || lang === "en";
+        const isDefault = hasEnglish
+          ? lang === "en" || label.toLowerCase().includes("english")
+          : seenAudios.size === 1;
+
+        // RFC 8216 Section 4.3.4.1: A URI attribute MUST NOT be included if the Media Segments
+        // contain the elementary audio streams (multiplexed). Setting URI to a video m3u8
+        // causes mobile players (iOS Safari / AVPlayer / Android) to choke on video packets
+        // in the audio buffer, causing infinite loading.
+        const isPureAudioStream =
+          a.url &&
+          (a.url.endsWith(".aac") ||
+            a.url.endsWith(".m4a") ||
+            a.url.includes("audio-only") ||
+            a.url.includes("/audio/"));
+        const uriAttr = isPureAudioStream ? `,URI="${a.url}"` : "";
+
         lines.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"${uriAttr}`
         );
-        isFirst = false;
       }
     }
 

@@ -73,7 +73,9 @@ function PlayerStateBridge({
   const hasNotifiedFirstFrameRef = useRef(false);
   const populatingAudioRef = useRef(false);
 
-  // Normalize audio candidate list
+  const userSelectedAudioRef = useRef(false);
+
+  // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
     const list: Array<{ id: string; label: string; language: string; url?: string }> = [];
 
@@ -83,7 +85,7 @@ function PlayerStateBridge({
           const lang = item.trim();
           if (lang) {
             list.push({
-              id: `audio-${idx}`,
+              id: String(idx),
               label: lang.charAt(0).toUpperCase() + lang.slice(1),
               language: lang.toLowerCase(),
             });
@@ -92,7 +94,7 @@ function PlayerStateBridge({
           const lang = (item.language || item.lang || "en").toLowerCase();
           const label = item.label || item.language || `Track ${idx + 1}`;
           list.push({
-            id: `audio-${idx}`,
+            id: String(idx),
             label,
             language: lang,
             url: item.url,
@@ -105,7 +107,7 @@ function PlayerStateBridge({
         const lang = p.trim();
         if (lang) {
           list.push({
-            id: `audio-${idx}`,
+            id: String(idx),
             label: lang.charAt(0).toUpperCase() + lang.slice(1),
             language: lang.toLowerCase(),
           });
@@ -118,34 +120,47 @@ function PlayerStateBridge({
       const primary = list[0]?.label || "English (Original)";
       list.length = 0;
       list.push(
-        { id: "audio-default", label: primary, language: "en" },
-        { id: "audio-multi", label: "Multi-Audio / Stereo", language: "mul" }
+        { id: "0", label: primary, language: "en" },
+        { id: "1", label: "Multi-Audio / Stereo", language: "mul" }
       );
     }
 
     return list;
   }, [availableAudio]);
 
-  // Sync available audio tracks into media.audioTracks so Video.js native Audio menu is displayed
+  // Sync and manage audio tracks with native engine and Video.js
   useEffect(() => {
     if (!media) return;
+
+    // Helper to auto-select English if default track is foreign (e.g. Hindi track 0)
+    const maybeAutoSelectEnglish = () => {
+      if (userSelectedAudioRef.current) return;
+      const engine = media.engine;
+      if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 1) {
+        const engIdx = engine.audioTracks.findIndex((t: any) => {
+          const l = (t.lang || "").toLowerCase();
+          const n = (t.name || "").toLowerCase();
+          return l === "en" || l === "eng" || n.includes("english");
+        });
+        if (engIdx !== -1 && engine.audioTrack !== engIdx) {
+          console.log(`[VideoJS] Auto-selecting English audio track at index ${engIdx}`);
+          engine.audioTrack = engIdx;
+        }
+      }
+    };
 
     const populateAudioTracks = () => {
       if (populatingAudioRef.current) return;
       if (!media.audioTracks) return;
 
-      // If tracks already present and match or exceed our list, don't overwrite
-      if (media.audioTracks.length >= normalizedAudios.length) return;
+      // If tracks already present from hls.js or native demuxer, do NOT delete them!
+      if (media.audioTracks.length > 0) {
+        maybeAutoSelectEnglish();
+        return;
+      }
 
       populatingAudioRef.current = true;
       try {
-        if (typeof media.removeAudioTrack === "function") {
-          const existing = [...media.audioTracks];
-          for (const t of existing) {
-            media.removeAudioTrack(t);
-          }
-        }
-
         normalizedAudios.forEach((item, idx) => {
           if (typeof media.addAudioTrack === "function") {
             const track = media.addAudioTrack(idx === 0 ? "main" : "alternative", item.label, item.language);
@@ -159,6 +174,7 @@ function PlayerStateBridge({
 
       setTimeout(() => {
         populatingAudioRef.current = false;
+        maybeAutoSelectEnglish();
       }, 80);
     };
 
@@ -176,9 +192,52 @@ function PlayerStateBridge({
         const tracks = [...media.audioTracks];
         const selected = tracks.find((t: any) => t.enabled);
         if (selected) {
+          userSelectedAudioRef.current = true;
+
+          const selectedLang = (selected.language || "").toLowerCase();
+          const selectedLabel = (selected.label || "").toLowerCase();
+          const selectedIdNum = Number(selected.id);
+
+          // 1. If hls.js engine exists, switch the engine audioTrack!
+          const engine = media.engine;
+          if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 0) {
+            let targetIdx = -1;
+            // First attempt: match by numeric ID
+            if (!isNaN(selectedIdNum) && engine.audioTracks.some((t: any) => t.id === selectedIdNum)) {
+              targetIdx = engine.audioTracks.findIndex((t: any) => t.id === selectedIdNum);
+            }
+            // Second attempt: match by language code (en, hi, ta, te)
+            if (targetIdx === -1 && selectedLang) {
+              targetIdx = engine.audioTracks.findIndex((t: any) => {
+                const tLang = (t.lang || "").toLowerCase();
+                return tLang === selectedLang || tLang.startsWith(selectedLang) || selectedLang.startsWith(tLang);
+              });
+            }
+            // Third attempt: match by label name (English, Hindi, etc.)
+            if (targetIdx === -1 && selectedLabel) {
+              targetIdx = engine.audioTracks.findIndex((t: any) => {
+                const tName = (t.name || "").toLowerCase();
+                return tName.includes(selectedLabel) || selectedLabel.includes(tName);
+              });
+            }
+
+            if (targetIdx !== -1 && engine.audioTrack !== targetIdx) {
+              console.log(
+                `[VideoJS] Switched hls.js audioTrack to index ${targetIdx} (${engine.audioTracks[targetIdx]?.name || selectedLabel})`
+              );
+              engine.audioTrack = targetIdx;
+            }
+          }
+
+          // 2. Find matched info for toast and optional onAudioChange URL switch
           const matched = normalizedAudios.find(
-            (r) => r.id === selected.id || r.label === selected.label || r.language === selected.language
+            (r) =>
+              r.id === selected.id ||
+              (selectedLang && (r.language === selectedLang || r.language.startsWith(selectedLang))) ||
+              (selectedLabel &&
+                (r.label.toLowerCase().includes(selectedLabel) || selectedLabel.includes(r.label.toLowerCase())))
           );
+
           const trackLabel = matched?.label || selected.label || "Audio Track";
           setAudioNotice(`Audio: ${trackLabel}`);
           setTimeout(() => setAudioNotice(null), 3000);
@@ -187,7 +246,9 @@ function PlayerStateBridge({
             onAudioChange(matched);
           }
         }
-      } catch { }
+      } catch (err) {
+        console.warn("[VideoJS] Error switching audio track:", err);
+      }
     };
 
     media.audioTracks?.addEventListener?.("change", onTrackChange);

@@ -814,6 +814,8 @@ export default function TestServersPage() {
                     controls={true}
                     className="w-full h-full"
                     storageKey={`lab:${mediaType}:${tmdbId}:${season}:${episode}`}
+                    availableAudio={directDetails?.audioTracks || directDetails?.audio}
+                    availableQualities={directDetails?.qualities || [directDetails?.quality || "Auto"]}
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-2 p-6 text-center max-w-md">
