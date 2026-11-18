@@ -17,6 +17,8 @@ export interface DirectStreamItem {
   subtitles?: any[];
   audio?: any;
   quality?: string;
+  qualities?: Array<{ quality: string; url: string }>;
+  audioTracks?: Array<{ language: string; label: string; url: string }>;
 }
 
 interface VideoPlayerProps {
@@ -216,6 +218,8 @@ export function VideoPlayer({
                 subtitles: res.subtitles || [],
                 audio: res.audio || "en",
                 quality: res.quality || "Auto",
+                qualities: res.qualities || [],
+                audioTracks: res.audioTracks || [],
               },
               true
             );
@@ -670,7 +674,8 @@ export function VideoPlayer({
               src={directStreamUrl}
               poster={poster}
               subtitles={activeMeta?.subtitles}
-              availableAudio={activeMeta?.audio}
+              availableAudio={activeMeta?.audioTracks || activeMeta?.audio}
+              availableQualities={activeMeta?.qualities || [activeMeta?.quality || "Auto"]}
               autoplay={true}
               controls={true}
               storageKey={routingKey}
@@ -683,10 +688,14 @@ export function VideoPlayer({
         {/* Cinematic Direct CDN Loading Animation (VidStuck / ZXCStream / TG Vid style) */}
         {(isPendingDirect || (isDirectStream && showDirectLoader)) && !failedDirects.has(selectedMirror || "") && (
           <div
-            className={`absolute inset-0 z-20 transition-all duration-300 pointer-events-none ${
+            onClick={() => {
+              setIsDirectLoading(false);
+              setShowDirectLoader(false);
+            }}
+            className={`absolute inset-0 z-20 transition-all duration-300 ${
               !isPendingDirect && !isDirectLoading
-                ? "opacity-0 scale-[1.02] filter blur-sm"
-                : "opacity-100 scale-100"
+                ? "opacity-0 scale-[1.02] filter blur-sm pointer-events-none"
+                : "opacity-100 scale-100 cursor-pointer"
             }`}
             style={{
               transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",

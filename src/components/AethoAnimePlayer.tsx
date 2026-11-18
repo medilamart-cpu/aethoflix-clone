@@ -96,7 +96,7 @@ export function AethoAnimePlayer({
       .then((data) => {
         if (!cancelled && data.ok && data.playable) {
           setDirectHlsUrl(data.playable);
-          setAnimeSubtitles(data.tracks || []);
+          setAnimeSubtitles(data.subtitles || data.tracks || []);
         }
       })
       .catch(() => {})

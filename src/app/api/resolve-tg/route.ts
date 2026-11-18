@@ -196,6 +196,79 @@ export async function GET(request: NextRequest) {
       return getScore(b) - getScore(a);
     });
 
+    // Aggregate multi-source subtitles, audio tracks, and qualities across candidate sources
+    const aggregatedSubtitles: Array<{ lang: string; label: string; url: string; default?: boolean }> = [];
+    const seenSubs = new Set<string>();
+
+    const aggregatedAudioTracks: Array<{ language: string; label: string; url: string }> = [];
+    const seenAudios = new Set<string>();
+
+    const aggregatedQualities: Array<{ quality: string; url: string }> = [];
+    const seenQualities = new Set<string>();
+
+    for (const src of candidateSources) {
+      const sUrl = [src.directUrl, src.rawUrl, src.url, src.fallbackProxyUrl].find(
+        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)
+      );
+      if (!sUrl) continue;
+
+      // Collect Subtitles from MovieBox and other multi-source providers
+      if (Array.isArray(src.subtitles)) {
+        for (const sub of src.subtitles) {
+          const sKey = (sub.lang || (sub as any).language || sub.label || sub.url || "").toLowerCase();
+          if (sKey && !seenSubs.has(sKey) && sub.url) {
+            seenSubs.add(sKey);
+            aggregatedSubtitles.push({
+              lang: sub.lang || (sub as any).language || "en",
+              label: sub.label || sub.lang || (sub as any).language || "English",
+              url: sub.url,
+              default: (sub.lang || (sub as any).language) === "en" || sub.label?.toLowerCase().includes("english"),
+            });
+          }
+        }
+      }
+
+      // Collect Audio Tracks
+      const aLang = (src.audio || src.audioLanguage || "en").toLowerCase();
+      const aLabel =
+        src.audioLabel ||
+        (aLang === "en"
+          ? "English (Original)"
+          : aLang === "hi"
+          ? "Hindi"
+          : aLang === "ta"
+          ? "Tamil"
+          : aLang === "te"
+          ? "Telugu"
+          : aLang === "ml"
+          ? "Malayalam"
+          : aLang === "ja"
+          ? "Japanese (Original)"
+          : aLang === "es"
+          ? "Spanish"
+          : aLang === "fr"
+          ? "French"
+          : aLang.toUpperCase());
+      if (!seenAudios.has(aLang)) {
+        seenAudios.add(aLang);
+        aggregatedAudioTracks.push({
+          language: aLang,
+          label: aLabel,
+          url: sUrl,
+        });
+      }
+
+      // Collect Qualities
+      const qLabel = src.quality || "720p";
+      if (!seenQualities.has(qLabel)) {
+        seenQualities.add(qLabel);
+        aggregatedQualities.push({
+          quality: qLabel,
+          url: sUrl,
+        });
+      }
+    }
+
     // Check candidate stream URLs for active 200 HTTP response
     for (const source of candidateSources) {
       const streamUrls = [source.directUrl, source.rawUrl, source.url, source.fallbackProxyUrl].filter(
@@ -215,15 +288,17 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Fast-path: Return direct HLS stream instantly to eliminate buffering lag
+        // Fast-path: Return direct HLS stream instantly with full source metadata
         const responseData = {
           ok: true,
           playable: url,
           type: "hls",
           label: "Direct CDN (VidSync)",
-          quality: source.quality || "1080p",
+          quality: source.quality || "720p",
           audio: source.audio || source.audioLanguage || "en",
-          subtitles: source.subtitles || [],
+          subtitles: aggregatedSubtitles.length > 0 ? aggregatedSubtitles : (source.subtitles || []),
+          audioTracks: aggregatedAudioTracks,
+          qualities: aggregatedQualities,
           availableCount: candidateSources.length,
         };
 

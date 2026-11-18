@@ -55,13 +55,26 @@ export async function GET(req: NextRequest) {
         ? streamPath
         : `https://cdn.4animo.xyz${streamPath}`;
 
+      const normalizedTracks = (data?.tracks || []).map((t: any) => {
+        const fileUrl = t.file?.startsWith("http")
+          ? t.file
+          : `https://cdn.4animo.xyz${t.file}`;
+        return {
+          ...t,
+          url: fileUrl,
+          file: fileUrl,
+          lang: t.label?.toLowerCase().includes("english") ? "en" : (t.language || "en"),
+        };
+      });
+
       return NextResponse.json({
         ok: true,
         playable: fullStreamUrl,
         label: "Direct CDN (ReCloud)",
         provider: "ReCloud",
         type: "hls",
-        tracks: data?.tracks || [],
+        tracks: normalizedTracks,
+        subtitles: normalizedTracks.filter((t: any) => t.kind !== "thumbnails"),
         intro: data?.intro || null,
         outro: data?.outro || null,
       });
