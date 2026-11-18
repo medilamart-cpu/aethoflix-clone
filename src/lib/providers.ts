@@ -200,7 +200,8 @@ export function isProviderSandboxCompatible(urlOrLabel?: string | null): boolean
     l.includes("embedwave") ||
     l.includes("nxsha") ||
     l.includes("vidlink") ||
-    l.includes("vidstuck")
+    l.includes("vidstuck") ||
+    l.includes("zxcstream")
   );
 }
 
