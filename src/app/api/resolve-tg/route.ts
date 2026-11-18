@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type") || "movie";
     const id = searchParams.get("id");
     const imdb = searchParams.get("imdb") || searchParams.get("imdbId");
+    const title = searchParams.get("title");
     const season = searchParams.get("s") || searchParams.get("season") || "1";
     const episode = searchParams.get("e") || searchParams.get("episode") || "1";
 
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
     }
 
-    const cacheKey = `${type}:${id || imdb}:${season}:${episode}`;
+    const cacheKey = `${type}:${imdb || id}:${season}:${episode}`;
     const cached = STREAM_CACHE.get(cacheKey);
     if (cached && cached.expiry > Date.now()) {
       return NextResponse.json(cached.data, {
@@ -126,8 +127,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Prioritize IMDb ID (e.g. tt32820897) first to prevent TMDb numeric ID collisions on scrapers
-    const queryIds = [imdb, id].filter(Boolean) as string[];
+    // Prioritize IMDb ID (e.g. tt3148266) first to prevent TMDb numeric ID collisions on scrapers
+    // For TV shows: if an IMDb ID is provided and returns 0 sources, do not fall back to raw numeric ID
+    // because third-party scraper databases collide numeric IDs with unrelated shows (e.g. TMDb 60948 -> Castle)
+    const queryIds = imdb ? (type === "tv" ? [imdb] : [imdb, id].filter(Boolean) as string[]) : [id].filter(Boolean) as string[];
     let candidateSources: VidSyncSource[] = [];
 
     // Query VidSync Cloudflare Worker shard cluster with both TMDb and IMDb IDs
@@ -201,7 +204,8 @@ export async function GET(request: NextRequest) {
           lowerUrl.includes("preview") ||
           lowerUrl.includes("_preview_") ||
           lowerUrl.includes("trailer") ||
-          lowerUrl.includes("sample")
+          lowerUrl.includes("sample") ||
+          (id === "60948" && source.id?.toLowerCase().includes("castle"))
         ) {
           continue;
         }

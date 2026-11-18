@@ -97,6 +97,8 @@ export interface MovieDetail extends MovieListItem {
 }
 
 export interface TVDetail extends TVListItem {
+  imdb_id?: string;
+  external_ids?: { imdb_id?: string; tvdb_id?: number };
   number_of_seasons: number;
   number_of_episodes: number;
   genres: { id: number; name: string }[];
@@ -232,7 +234,7 @@ export async function movieDetail(id: number): Promise<MovieDetail> {
 }
 
 export async function tvDetail(id: number): Promise<TVDetail> {
-  return tmdbFetch<TVDetail>(`/tv/${id}`, { append_to_response: "similar,videos" });
+  return tmdbFetch<TVDetail>(`/tv/${id}`, { append_to_response: "external_ids,similar,videos" });
 }
 
 export async function tvSeason(tvId: number, seasonNumber: number): Promise<{ episodes: Episode[] }> {

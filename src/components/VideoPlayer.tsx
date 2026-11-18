@@ -11,6 +11,14 @@ import { VlcButton } from "./VlcButton";
 import { raceCandidateMirrors } from "@/lib/serverRacer";
 import { isProviderSandboxCompatible } from "@/lib/providers";
 
+export interface DirectStreamItem {
+  url: string;
+  label: string;
+  subtitles?: any[];
+  audio?: any;
+  quality?: string;
+}
+
 interface VideoPlayerProps {
   routingKey: string; // "movie:1400940"
   routingTitle: string;
@@ -52,7 +60,7 @@ export function VideoPlayer({
     return "Direct CDN (VidSync)";
   }, [initialCache, routingKey]);
 
-  const [directStreams, setDirectStreams] = useState<Array<{ url: string; label: string }>>(
+  const [directStreams, setDirectStreams] = useState<Array<DirectStreamItem>>(
     initialCache?.directStreams ?? (initialCache?.directStream ? [initialCache.directStream] : [])
   );
   const [verifiedServers, setVerifiedServers] = useState<Array<{ label: string; url: string; latency: number }> | null>(
@@ -118,7 +126,7 @@ export function VideoPlayer({
 
     const directTgUrl =
       type === "movie" || type === "tv"
-        ? `/api/resolve-tg?type=${type}&id=${id}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}&s=${s}&e=${e}`
+        ? `/api/resolve-tg?type=${type}&id=${id}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}${routingTitle ? `&title=${encodeURIComponent(routingTitle)}` : ""}&s=${s}&e=${e}`
         : "";
 
     const checkServersUrl = `/api/check-servers?type=${type}&id=${id}&s=${s}&e=${e}`;
@@ -158,7 +166,7 @@ export function VideoPlayer({
     };
 
     // Fast-path helper: immediately mounts and activates the direct stream the exact ms it resolves
-    const registerDirectStream = (stream: { url: string; label: string }, isPrimary: boolean) => {
+    const registerDirectStream = (stream: DirectStreamItem, isPrimary: boolean) => {
       if (!isMounted) return;
       setFailedDirects((prev) => {
         const next = new Set(prev);
@@ -201,7 +209,16 @@ export function VideoPlayer({
         .then((res) => {
           clearTimeout(timer);
           if (res?.ok && res?.playable) {
-            registerDirectStream({ url: res.playable, label: "Direct CDN (VidSync)" }, true);
+            registerDirectStream(
+              {
+                url: res.playable,
+                label: "Direct CDN (VidSync)",
+                subtitles: res.subtitles || [],
+                audio: res.audio || "en",
+                quality: res.quality || "Auto",
+              },
+              true
+            );
           } else {
             markDirectFailed("Direct CDN (VidSync)");
           }
@@ -228,7 +245,16 @@ export function VideoPlayer({
         .then((res) => {
           clearTimeout(timer);
           if (res?.ok && res?.playable) {
-            registerDirectStream({ url: res.playable, label: "Direct CDN (TheOGPirateBot)" }, false);
+            registerDirectStream(
+              {
+                url: res.playable,
+                label: "Direct CDN (TheOGPirateBot)",
+                subtitles: res.subtitles || [],
+                audio: res.audio || ["en"],
+                quality: res.quality || "auto",
+              },
+              false
+            );
           } else {
             markDirectFailed("Direct CDN (TheOGPirateBot)");
           }
@@ -255,7 +281,14 @@ export function VideoPlayer({
         .then((res) => {
           clearTimeout(timer);
           if (res?.ok && res?.playable) {
-            registerDirectStream({ url: res.playable, label: "Direct CDN (ReCloud)" }, true);
+            registerDirectStream(
+              {
+                url: res.playable,
+                label: "Direct CDN (ReCloud)",
+                subtitles: res.tracks || [],
+              },
+              true
+            );
           } else {
             markDirectFailed("Direct CDN (ReCloud)");
           }
@@ -352,9 +385,9 @@ export function VideoPlayer({
     const s = parts[2] || "1";
     const e = parts[3] || "1";
     if (type === "movie") {
-      res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/movie/${id}?server=AwsPly-[Multi-Lang]`;
+      res["Multi HD (EmbedWave)"] = `https://embedwave.cc/embed/movie/${id}`;
     } else if (type === "tv") {
-      res["Multi HD (EmbedWave)"] = `https://nxsha.space/embed/tv/${id}/${s}/${e}?server=AwsPly-[Multi-Lang]`;
+      res["Multi HD (EmbedWave)"] = `https://embedwave.cc/embed/tv/${id}/${s}/${e}`;
     }
 
     // 4. Other clean mirrors (VidLink, VidFast, VidNest...)
@@ -642,18 +675,23 @@ export function VideoPlayer({
         )}
 
         {/* 1. Direct Stream Player with Video.js */}
-        {url && isDirectStream && (
-          <VideoJSPlayer
-            key={`vjs-${directStreamUrl}`}
-            src={directStreamUrl}
-            poster={poster}
-            autoplay={true}
-            controls={true}
-            storageKey={routingKey}
-            onError={handleDirectError}
-            onFirstFrame={handleFirstFrame}
-          />
-        )}
+        {url && isDirectStream && (() => {
+          const activeMeta = directStreams.find((d) => d.label === selectedMirror || d.url === directStreamUrl);
+          return (
+            <VideoJSPlayer
+              key={`vjs-${directStreamUrl}`}
+              src={directStreamUrl}
+              poster={poster}
+              subtitles={activeMeta?.subtitles}
+              availableAudio={activeMeta?.audio}
+              autoplay={true}
+              controls={true}
+              storageKey={routingKey}
+              onError={handleDirectError}
+              onFirstFrame={handleFirstFrame}
+            />
+          );
+        })()}
 
         {/* Cinematic Direct CDN Loading Animation (VidStuck / ZXCStream / TG Vid style) */}
         {(isPendingDirect || (isDirectStream && showDirectLoader)) && (
@@ -715,7 +753,7 @@ export function VideoPlayer({
               allowFullScreen={true}
               sandbox={
                 shouldSandbox
-                  ? "allow-scripts allow-same-origin allow-forms allow-presentation"
+                  ? "allow-scripts allow-same-origin allow-forms allow-presentation allow-modals"
                   : undefined
               }
               {...({

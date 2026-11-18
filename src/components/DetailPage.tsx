@@ -186,6 +186,7 @@ export function TVDetailPage({ tv, initialSeason, initialEpisode }: TVDetailPage
             routingTitle={`${tv.name} S${season}E${episode}`}
             mirrors={mirrors}
             poster={backdropUrl(tv.backdrop_path, "w1280")}
+            imdbId={tv.imdb_id || tv.external_ids?.imdb_id || undefined}
             adPartnerUrl1={AD_PARTNER_URL_1 || undefined}
             adPartnerUrl2={AD_PARTNER_URL_2 || undefined}
           />

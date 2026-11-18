@@ -351,27 +351,33 @@ export function getAnimeServers(
 
   return [
     {
+      id: "videojs",
+      name: "Server 1 (Direct CDN - ReCloud)",
+      serverNumber: 1,
+      url: "videojs",
+    },
+    {
       id: "megaplay",
       name: "MegaPlay",
-      serverNumber: 1,
+      serverNumber: 2,
       url: `https://megaplay.buzz/stream/ani/${anilistId}/${episode}/${subOrDub}`,
     },
     {
       id: "recloud-1",
       name: "ReCloud HD 1",
-      serverNumber: 2,
+      serverNumber: 3,
       url: `https://cdn.4animo.xyz/embed/hd-1/ani/${anilistId}/${episode}/${subOrDub}?k=1`,
     },
     {
       id: "recloud-2",
       name: "ReCloud HD 2",
-      serverNumber: 3,
+      serverNumber: 4,
       url: `https://cdn.4animo.xyz/embed/hd-2/ani/${anilistId}/${episode}/${subOrDub}?k=1`,
     },
     {
       id: "zokoanime",
       name: "Zokoanime",
-      serverNumber: 4,
+      serverNumber: 5,
       url: malUrl,
     },
   ];

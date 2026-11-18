@@ -74,13 +74,14 @@ export function AethoAnimePlayer({
   const [selectedSeason, setSelectedSeason] = useState<number>(initialSeason);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(initialEpisode);
   const [subOrDub, setSubOrDub] = useState<"sub" | "dub">("sub");
-  const [serverId, setServerId] = useState<string>("megaplay");
+  const [serverId, setServerId] = useState<string>("videojs");
   const [showSourcesInfo, setShowSourcesInfo] = useState<boolean>(false);
   const [showDownloadDialog, setShowDownloadDialog] = useState<boolean>(false);
   const [shareToast, setShareToast] = useState<string>("");
 
-  // Direct HLS CDN stream via Video.js
+  // Direct HLS CDN stream via Video.js (ReCloud)
   const [directHlsUrl, setDirectHlsUrl] = useState<string | null>(null);
+  const [animeSubtitles, setAnimeSubtitles] = useState<any[]>([]);
   const [resolvingDirect, setResolvingDirect] = useState<boolean>(false);
 
   // Auto-resolve direct HLS whenever episode or audio changes
@@ -88,12 +89,14 @@ export function AethoAnimePlayer({
     let cancelled = false;
     setResolvingDirect(true);
     setDirectHlsUrl(null);
+    setAnimeSubtitles([]);
 
-    fetch(`/api/resolve-anime?id=${anilistId}&e=${selectedEpisode}&sub=${subOrDub}`)
+    fetch(`/api/resolve-recloud?id=${anilistId}&e=${selectedEpisode}&sub=${subOrDub}`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled && data.ok && data.playable) {
           setDirectHlsUrl(data.playable);
+          setAnimeSubtitles(data.tracks || []);
         }
       })
       .catch(() => {})
@@ -219,6 +222,7 @@ export function AethoAnimePlayer({
                   key={`videojs-${selectedEpisode}-${subOrDub}`}
                   src={directHlsUrl}
                   type="application/x-mpegURL"
+                  subtitles={animeSubtitles}
                   poster={backdropPath ? `https://image.tmdb.org/t/p/w1280${backdropPath}` : undefined}
                   storageKey={`anime:${anilistId}:${selectedEpisode}`}
                   className="h-full w-full"
