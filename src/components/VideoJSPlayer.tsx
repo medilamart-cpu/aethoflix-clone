@@ -1,18 +1,13 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
-import {
-  RotateCcw,
-  SlidersHorizontal,
-  Volume2,
-  Subtitles as SubtitlesIcon,
-  Gauge,
-  Check,
-  X,
-} from "lucide-react";
+import { Menu } from "@videojs/react";
+import { QualityIcon, CheckIcon } from "@videojs/react/icons";
+import { RotateCcw } from "lucide-react";
 
 export interface QualityItem {
   quality: string;
@@ -49,19 +44,9 @@ export interface VideoJSPlayerProps {
   onFirstFrame?: () => void;
 }
 
-function detectPlatform() {
-  if (typeof window === "undefined") return { isIOS: false, isAndroid: false };
-  const ua = navigator.userAgent || (navigator as any).vendor || (window as any).opera || "";
-  const isIOS =
-    /iPad|iPhone|iPod/.test(ua) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const isAndroid = /Android/i.test(ua);
-  return { isIOS, isAndroid };
-}
-
 /**
  * Player State Bridge — runs inside <VideoPlayer> context
- * Handles resume timestamp, progress saving, first-frame callback, and native fullscreen handoff
+ * Handles resume timestamp, progress saving, first-frame callback, and native playback tracking
  */
 function PlayerStateBridge({
   storageKey,
@@ -157,13 +142,85 @@ function PlayerStateBridge({
 }
 
 /**
+ * Video.js Native Quality Menu Component
+ * Placed directly within the Video.js controls layer (bottom control bar)
+ * Leverages official Video.js Menu primitives and icons:
+ * - Menu.Root, Menu.Trigger, Menu.Popup, Menu.Content, Menu.RadioGroup, Menu.RadioItem
+ * - QualityIcon, CheckIcon from @videojs/react/icons
+ */
+function VideoJSQualityControl({
+  qualityList,
+  selectedQuality,
+  onSelectQuality,
+}: {
+  qualityList: QualityItem[];
+  selectedQuality: string;
+  onSelectQuality: (q: QualityItem) => void;
+}) {
+  if (!qualityList || qualityList.length <= 1) return null;
+
+  return (
+    <div className="flex items-center">
+      <Menu.Root side="top" align="center">
+        <Menu.Trigger
+          className="media-button video-controls-settings-button flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-300 hover:text-white rounded-md transition cursor-pointer select-none"
+          aria-label="Quality"
+          title="Stream Quality"
+        >
+          <QualityIcon className="media-button-icon-base w-4 h-4 text-neutral-300" />
+          <span className="text-[11px] font-mono font-medium tracking-tight text-neutral-200">
+            {selectedQuality}
+          </span>
+        </Menu.Trigger>
+        <Menu.Popup
+          keepMounted
+          className="media-popup media-popup-surface media-menu-popup z-50 min-w-[130px] rounded-xl bg-neutral-950/95 border border-white/15 p-1.5 shadow-2xl backdrop-blur-md"
+        >
+          <Menu.Content className="media-menu-content flex flex-col gap-0.5">
+            <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold text-neutral-400 border-b border-white/10 mb-1">
+              Quality
+            </div>
+            <Menu.RadioGroup
+              value={selectedQuality}
+              onValueChange={(val) => {
+                const target = qualityList.find((q) => q.quality === val);
+                if (target) onSelectQuality(target);
+              }}
+            >
+              {qualityList.map((q) => {
+                const isSelected = selectedQuality === q.quality;
+                return (
+                  <Menu.RadioItem
+                    key={q.quality}
+                    value={q.quality}
+                    className={`media-menu-radio-item flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition select-none ${
+                      isSelected
+                        ? "bg-red-600/20 text-red-400 border border-red-500/30"
+                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <span>{q.quality}</span>
+                    {isSelected && <CheckIcon className="w-3.5 h-3.5 text-red-500" />}
+                  </Menu.RadioItem>
+                );
+              })}
+            </Menu.RadioGroup>
+          </Menu.Content>
+        </Menu.Popup>
+      </Menu.Root>
+    </div>
+  );
+}
+
+/**
  * Modern Video.js 10 React Player Component
- * Incorporates:
- * - Direct CDN multi-source quality switching (Auto, 720p, 480p, 360p)
- * - Direct CDN multi-language audio switching (English, Hindi, Tamil, Telugu, Spanish, French, etc.)
- * - Direct CDN multi-language subtitles binding via <track> elements
- * - Seamless timestamp preservation during quality/audio transitions
- * - Netflix-themed Video.js Quick Settings modal
+ * Architecture:
+ * - Zero ad-hoc floating buttons in corners; controls are strictly housed in Video.js's controls layer
+ * - Native Video.js control bar with Quality Control, Captions, Fullscreen, Volume, and Seek
+ * - Direct CDN multi-source quality switching integrated with Video.js Menu primitives
+ * - Direct CDN multi-language subtitles binding via standard <track> elements
+ * - Seamless timestamp preservation during quality transitions
+ * - Obsidian dark glass (#050505) aesthetic with signature Netflix crimson (#e50914) accent
  */
 export function VideoJSPlayer({
   src,
@@ -181,15 +238,37 @@ export function VideoJSPlayer({
 }: VideoJSPlayerProps) {
   const [activeSrc, setActiveSrc] = useState<string>(src);
   const pendingSeekRef = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [controlsHost, setControlsHost] = useState<Element | null>(null);
 
   // Sync activeSrc if prop src changes externally
   useEffect(() => {
     setActiveSrc(src);
   }, [src]);
 
-  // ── Quick Settings State ──
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<"quality" | "audio" | "subtitles" | "speed">("quality");
+  // Find Video.js native controls container to portal quality control into the bottom bar
+  useEffect(() => {
+    const findHost = () => {
+      if (!containerRef.current) return false;
+      const primary = containerRef.current.querySelector(".video-controls-primary");
+      if (primary) {
+        setControlsHost(primary);
+        return true;
+      }
+      return false;
+    };
+
+    if (!findHost()) {
+      const interval = setInterval(() => {
+        if (findHost()) clearInterval(interval);
+      }, 100);
+      const timeout = setTimeout(() => clearInterval(interval), 3000);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
+    }
+  }, []);
 
   // Normalize Qualities from direct CDN source
   const qualityList = useMemo<QualityItem[]>(() => {
@@ -216,45 +295,12 @@ export function VideoJSPlayer({
     return [{ quality: "Auto", url: src }];
   }, [availableQualities, src]);
 
-  // Normalize Audio Tracks from direct CDN source
-  const audioList = useMemo<AudioItem[]>(() => {
-    if (!availableAudio) return [];
-    if (Array.isArray(availableAudio)) {
-      const items: AudioItem[] = [];
-      const seen = new Set<string>();
-      for (const a of availableAudio) {
-        if (typeof a === "string") {
-          if (!seen.has(a)) {
-            seen.add(a);
-            items.push({ language: a, label: a.toUpperCase(), url: src });
-          }
-        } else if (a && typeof a === "object") {
-          const lang = a.language || a.lang || "en";
-          if (!seen.has(lang)) {
-            seen.add(lang);
-            items.push({
-              language: lang,
-              label: a.label || lang.toUpperCase(),
-              url: a.url || src,
-            });
-          }
-        }
-      }
-      return items;
-    }
-    return [];
-  }, [availableAudio, src]);
-
   const [selectedQuality, setSelectedQuality] = useState<string>("Auto");
-  const [selectedAudio, setSelectedAudio] = useState<string>("en");
-  const [selectedSubtitle, setSelectedSubtitle] = useState<string>("off");
-  const [selectedSpeed, setSelectedSpeed] = useState<number>(1);
-  const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-  // Restore timestamp seamlessly after switching stream source (quality or audio)
+  // Restore timestamp seamlessly after switching stream quality
   const handleMediaCanPlay = useCallback(() => {
     onFirstFrame?.();
-    const video = document.querySelector("video");
+    const video = containerRef.current?.querySelector("video") || document.querySelector("video");
     if (video && pendingSeekRef.current !== null && isFinite(pendingSeekRef.current)) {
       const t = pendingSeekRef.current;
       pendingSeekRef.current = null;
@@ -270,52 +316,10 @@ export function VideoJSPlayer({
   const handleSelectQuality = (q: QualityItem) => {
     setSelectedQuality(q.quality);
     if (q.url && q.url !== activeSrc) {
-      const video = document.querySelector("video");
+      const video = containerRef.current?.querySelector("video") || document.querySelector("video");
       if (video) pendingSeekRef.current = video.currentTime;
       setActiveSrc(q.url);
     }
-    setIsSettingsOpen(false);
-  };
-
-  // Handle Audio Selection
-  const handleSelectAudio = (a: AudioItem) => {
-    setSelectedAudio(a.language);
-    if (a.url && a.url !== activeSrc) {
-      const video = document.querySelector("video");
-      if (video) pendingSeekRef.current = video.currentTime;
-      setActiveSrc(a.url);
-    }
-    setIsSettingsOpen(false);
-  };
-
-  // Handle Subtitle Selection
-  const handleSelectSubtitle = (subLang: string) => {
-    setSelectedSubtitle(subLang);
-    const video = document.querySelector("video");
-    if (video && video.textTracks) {
-      for (let i = 0; i < video.textTracks.length; i++) {
-        const track = video.textTracks[i];
-        if (subLang === "off") {
-          track.mode = "disabled";
-        } else if (
-          track.language?.toLowerCase() === subLang.toLowerCase() ||
-          track.label?.toLowerCase() === subLang.toLowerCase()
-        ) {
-          track.mode = "showing";
-        } else {
-          track.mode = "disabled";
-        }
-      }
-    }
-    setIsSettingsOpen(false);
-  };
-
-  // Handle Playback Speed Selection
-  const handleSelectSpeed = (sp: number) => {
-    setSelectedSpeed(sp);
-    const video = document.querySelector("video");
-    if (video) video.playbackRate = sp;
-    setIsSettingsOpen(false);
   };
 
   const isHls =
@@ -323,216 +327,21 @@ export function VideoJSPlayer({
     (!activeSrc.includes(".mp4") && !activeSrc.includes(".webm"));
 
   return (
-    <div className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}>
-      {/* Video.js Quick Settings Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-        title="Stream Settings"
-        className="absolute top-3.5 right-3.5 z-30 flex items-center gap-1.5 rounded-lg bg-black/80 hover:bg-neutral-900 px-2.5 py-1 text-xs font-medium text-neutral-200 border border-white/15 backdrop-blur-md shadow-lg transition cursor-pointer"
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5 text-red-500" />
-        <span className="hidden sm:inline">Settings</span>
-        {selectedQuality !== "Auto" && (
-          <span className="ml-0.5 rounded bg-red-600/30 px-1 py-0.2 text-[10px] text-red-400 font-mono">
-            {selectedQuality}
-          </span>
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}
+    >
+      {/* Video.js Quality Control mounted directly inside Video.js bottom control bar */}
+      {controlsHost &&
+        qualityList.length > 1 &&
+        createPortal(
+          <VideoJSQualityControl
+            qualityList={qualityList}
+            selectedQuality={selectedQuality}
+            onSelectQuality={handleSelectQuality}
+          />,
+          controlsHost
         )}
-      </button>
-
-      {/* Video.js Quick Settings Modal */}
-      {isSettingsOpen && (
-        <div
-          className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 p-4"
-          onClick={() => setIsSettingsOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-neutral-950/95 border border-white/15 p-5 text-white shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4 text-red-500" />
-                <h3 className="text-sm font-semibold tracking-wide">Player Settings</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(false)}
-                className="rounded-lg p-1 text-neutral-400 hover:text-white hover:bg-white/10 transition"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="grid grid-cols-4 gap-1 rounded-xl bg-neutral-900/90 p-1 border border-white/10 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab("quality")}
-                className={`py-1.5 rounded-lg font-medium transition ${
-                  activeTab === "quality"
-                    ? "bg-red-600 text-white shadow"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                Quality
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("audio")}
-                className={`py-1.5 rounded-lg font-medium transition ${
-                  activeTab === "audio"
-                    ? "bg-red-600 text-white shadow"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                Audio
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("subtitles")}
-                className={`py-1.5 rounded-lg font-medium transition ${
-                  activeTab === "subtitles"
-                    ? "bg-red-600 text-white shadow"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                Subtitles
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("speed")}
-                className={`py-1.5 rounded-lg font-medium transition ${
-                  activeTab === "speed"
-                    ? "bg-red-600 text-white shadow"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                Speed
-              </button>
-            </div>
-
-            {/* Tab Contents */}
-            <div className="max-h-60 overflow-y-auto pr-1 space-y-1.5">
-              {/* 1. Quality Tab */}
-              {activeTab === "quality" && (
-                <div className="space-y-1">
-                  {qualityList.map((q) => (
-                    <button
-                      key={q.quality}
-                      type="button"
-                      onClick={() => handleSelectQuality(q)}
-                      className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer ${
-                        selectedQuality === q.quality
-                          ? "bg-red-600/20 text-red-400 border border-red-500/30"
-                          : "hover:bg-white/5 text-neutral-300"
-                      }`}
-                    >
-                      <span>{q.quality}</span>
-                      {selectedQuality === q.quality && <Check className="h-3.5 w-3.5 text-red-500" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* 2. Audio Tab */}
-              {activeTab === "audio" && (
-                <div className="space-y-1">
-                  {audioList.length === 0 ? (
-                    <div className="py-4 text-center text-xs text-neutral-400">
-                      Single audio stream provided by CDN
-                    </div>
-                  ) : (
-                    audioList.map((a) => (
-                      <button
-                        key={a.language}
-                        type="button"
-                        onClick={() => handleSelectAudio(a)}
-                        className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer ${
-                          selectedAudio === a.language
-                            ? "bg-red-600/20 text-red-400 border border-red-500/30"
-                            : "hover:bg-white/5 text-neutral-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Volume2 className="h-3.5 w-3.5 text-neutral-400" />
-                          <span>{a.label}</span>
-                        </div>
-                        {selectedAudio === a.language && <Check className="h-3.5 w-3.5 text-red-500" />}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* 3. Subtitles Tab */}
-              {activeTab === "subtitles" && (
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectSubtitle("off")}
-                    className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer ${
-                      selectedSubtitle === "off"
-                        ? "bg-red-600/20 text-red-400 border border-red-500/30"
-                        : "hover:bg-white/5 text-neutral-300"
-                    }`}
-                  >
-                    <span>Off</span>
-                    {selectedSubtitle === "off" && <Check className="h-3.5 w-3.5 text-red-500" />}
-                  </button>
-                  {subtitles.map((sub, idx) => {
-                    const langKey = sub.lang || sub.label || `track-${idx}`;
-                    const isSelected = selectedSubtitle === langKey;
-                    return (
-                      <button
-                        key={langKey}
-                        type="button"
-                        onClick={() => handleSelectSubtitle(langKey)}
-                        className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer ${
-                          isSelected
-                            ? "bg-red-600/20 text-red-400 border border-red-500/30"
-                            : "hover:bg-white/5 text-neutral-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <SubtitlesIcon className="h-3.5 w-3.5 text-neutral-400" />
-                          <span>{sub.label || sub.lang || `Track ${idx + 1}`}</span>
-                        </div>
-                        {isSelected && <Check className="h-3.5 w-3.5 text-red-500" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* 4. Speed Tab */}
-              {activeTab === "speed" && (
-                <div className="space-y-1">
-                  {speedOptions.map((sp) => (
-                    <button
-                      key={sp}
-                      type="button"
-                      onClick={() => handleSelectSpeed(sp)}
-                      className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer ${
-                        selectedSpeed === sp
-                          ? "bg-red-600/20 text-red-400 border border-red-500/30"
-                          : "hover:bg-white/5 text-neutral-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 font-mono">
-                        <Gauge className="h-3.5 w-3.5 text-neutral-400" />
-                        <span>{sp === 1 ? "1.0x (Normal)" : `${sp}x`}</span>
-                      </div>
-                      {selectedSpeed === sp && <Check className="h-3.5 w-3.5 text-red-500" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Main Video.js Player Tree */}
       <VideoPlayer poster={poster}>
