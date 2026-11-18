@@ -223,6 +223,22 @@ export function VideoPlayer({
               },
               true
             );
+
+            // Register Server 2 Direct CDN from secondary standby stream
+            if (res.secondaryStream?.playable) {
+              registerDirectStream(
+                {
+                  url: res.secondaryStream.playable,
+                  label: "Direct CDN (Server 2)",
+                  subtitles: res.subtitles || [],
+                  audio: "en",
+                  quality: "Auto",
+                  qualities: res.qualities || [],
+                  audioTracks: res.audioTracks || [],
+                },
+                false
+              );
+            }
           } else {
             markDirectFailed("Direct CDN (VidSync)");
           }
@@ -363,10 +379,14 @@ export function VideoPlayer({
       res["Direct CDN (VidSync)"] = vidSyncDirect ? vidSyncDirect.url : "direct:pending:vidsync";
     }
 
-    // 2. Server 2: TheOGPirateBot (OGPirate)
-    const theOgDirect = directStreams.find((d) => d.label.includes("TheOG"));
+    // 2. Server 2: Direct CDN (Server 2) / TheOGPirateBot
     if (routingKey.startsWith("movie:") || routingKey.startsWith("tv:")) {
-      res["Direct CDN (TheOGPirateBot)"] = theOgDirect ? theOgDirect.url : "direct:pending:theog";
+      const s2Direct = directStreams.find((d) => d.label.includes("Server 2") || d.label.includes("TheOG"));
+      if (s2Direct && !failedDirects.has(s2Direct.label)) {
+        res[s2Direct.label] = s2Direct.url;
+      } else if (!failedDirects.has("Direct CDN (Server 2)")) {
+        res["Direct CDN (Server 2)"] = "direct:pending:server2";
+      }
     }
 
     // 3. Server 3: Multi HD (EmbedWave / Nxsha with Multi-Lang Audio & 1080p)

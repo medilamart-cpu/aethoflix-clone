@@ -9,8 +9,12 @@ interface VidSyncSource {
   url?: string;
   rawUrl?: string;
   directUrl?: string;
+  standbyUrl?: string;
+  standbyProvider?: string;
   fallbackProxyUrl?: string;
   type?: string;
+  title?: string;
+  year?: string;
   quality?: string;
   availableQualities?: string[];
   audioLanguage?: string;
@@ -102,6 +106,24 @@ async function verifyPlayable(url: string): Promise<boolean> {
 // In-memory cache for resolved streams (15 minute TTL)
 const STREAM_CACHE = new Map<string, { data: any; expiry: number }>();
 
+function normalizeTitle(t: string): string {
+  return t
+    .toLowerCase()
+    .replace(/^(the|a|an)\s+/i, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function extractTitleFromSource(s: VidSyncSource): string | null {
+  if (s.title) return s.title;
+  if (s.fallbackProxyUrl) {
+    try {
+      const match = s.fallbackProxyUrl.match(/%22title%22%3A%22([^%]+)%22/);
+      if (match) return decodeURIComponent(match[1]);
+    } catch {}
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -116,7 +138,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing media id" }, { status: 400 });
     }
 
-    const cacheKey = `${type}:${imdb || id}:${season}:${episode}`;
+    // VidSync requires pure numeric TMDb ID; never pass IMDb ID (tt...) into VidSync's shard router
+    let tmdbNumericId = id && /^\d+$/.test(id) ? id : null;
+    if (!tmdbNumericId && imdb && !imdb.startsWith("tt") && /^\d+$/.test(imdb)) {
+      tmdbNumericId = imdb;
+    }
+
+    if (!tmdbNumericId) {
+      // If only IMDb ID was supplied, try resolving it to TMDb numeric ID via media-info
+      return NextResponse.json(
+        { ok: false, error: "Numeric TMDb ID is required for VidSync Direct CDN" },
+        { status: 400 }
+      );
+    }
+
+    const cacheKey = `${type}:${tmdbNumericId}:${season}:${episode}`;
     const cached = STREAM_CACHE.get(cacheKey);
     if (cached && cached.expiry > Date.now()) {
       return NextResponse.json(cached.data, {
@@ -127,61 +163,96 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // TMDb numeric ID is required for VidSync TV shows and movies
-    const queryIds = [id, imdb].filter(Boolean) as string[];
+    const key = `${type}-${tmdbNumericId}-${season}-${episode}`;
+    const targetShards = [
+      "https://vidsync-shard.vs-sharaparvin76.workers.dev",
+      getShard(key, 0),
+      getShard(key, 1),
+    ];
+    const uniqueShards = [...new Set(targetShards)];
     let candidateSources: VidSyncSource[] = [];
+    let activeShard = uniqueShards[0];
 
     // Query VidSync Cloudflare Worker shard cluster
-    for (const currentId of queryIds) {
-      const key = `${type}-${currentId}-${season}-${episode}`;
+    for (const shard of uniqueShards) {
+      const queryParams = new URLSearchParams({
+        type,
+        id: tmdbNumericId,
+        season,
+        episode,
+        _t: String(Date.now()),
+      });
 
-      // Query known live shard first, plus hashed shards for redundancy
-      const targetShards = [
-        "https://vidsync-shard.vs-sharaparvin76.workers.dev",
-        getShard(key, 0),
-        getShard(key, 1),
-      ];
-      const uniqueShards = [...new Set(targetShards)];
-
-      for (const shard of uniqueShards) {
-        const queryParams = new URLSearchParams({
-          type,
-          id: currentId,
-          season,
-          episode,
-          _t: String(Date.now()),
+      try {
+        const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
+          headers: {
+            Origin: "https://vidsync.pro",
+            Referer: "https://vidsync.pro/",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(4000),
         });
 
-        try {
-          const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
-            headers: {
-              Origin: "https://vidsync.pro",
-              Referer: "https://vidsync.pro/",
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            },
-            signal: AbortSignal.timeout(4000),
-          });
+        if (!res.ok) continue;
+        const text = await res.text();
+        if (!text.startsWith("{")) continue;
 
-          if (!res.ok) continue;
-          const text = await res.text();
-          if (!text.startsWith("{")) continue;
-
-          const data = JSON.parse(text);
-          if (Array.isArray(data?.sources) && data.sources.length > 0) {
-            candidateSources = data.sources;
-            break;
-          }
-        } catch {
-          // Retry next shard
+        const data = JSON.parse(text);
+        if (Array.isArray(data?.sources) && data.sources.length > 0) {
+          candidateSources = data.sources;
+          activeShard = shard;
+          break;
         }
+      } catch {
+        // Retry next shard
       }
-
-      if (candidateSources.length > 0) break;
     }
 
-    // Intelligent audio ranking: prioritize English and original audio (Japanese for anime, etc.)
-    // strongly deprioritize third-party dubbed cam rips (ta, te) with ads
+    // ── Title Matching Validation Guard ──
+    // Prevents ID collisions (e.g. TMDb 60948 Castle Rock vs Castle) from serving wrong content
+    if (title && candidateSources.length > 0) {
+      const reqNorm = normalizeTitle(title);
+      const filtered = candidateSources.filter((src) => {
+        const srcTitle = extractTitleFromSource(src);
+        if (!srcTitle) return true;
+        const srcNorm = normalizeTitle(srcTitle);
+        return srcNorm === reqNorm || srcNorm.includes(reqNorm) || reqNorm.includes(srcNorm);
+      });
+      if (filtered.length > 0) {
+        candidateSources = filtered;
+      }
+    }
+
+    // ── Dedicated Subtitles Query from VidSync Worker Subtitle API ──
+    let workerSubtitles: any[] = [];
+    try {
+      const subParams = new URLSearchParams({
+        id: tmdbNumericId,
+        type,
+      });
+      if (type === "tv") {
+        subParams.set("season", season);
+        subParams.set("episode", episode);
+      }
+      const subRes = await fetch(`${activeShard}/api/subtitles?${subParams.toString()}`, {
+        headers: {
+          Origin: "https://vidsync.pro",
+          Referer: "https://vidsync.pro/",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(3500),
+      });
+      if (subRes.ok) {
+        const subData = await subRes.json();
+        if (Array.isArray(subData?.subtitles)) {
+          workerSubtitles = subData.subtitles;
+        }
+      }
+    } catch {}
+
+    // Intelligent audio ranking: prioritize English and original audio
     candidateSources.sort((a, b) => {
       const getScore = (s: VidSyncSource) => {
         const lang = (s.audio || s.audioLanguage || "").toLowerCase();
@@ -190,7 +261,7 @@ export async function GET(request: NextRequest) {
         if (s.audioTracks?.some((t) => t.original)) return 85;
         if (lang === "es" || lang === "fr" || lang === "de") return 50;
         if (lang === "hi") return 30;
-        if (lang === "ta" || lang === "te") return 10; // Low-tier dubbed rips with watermarks
+        if (lang === "ta" || lang === "te") return 10;
         return 40;
       };
       return getScore(b) - getScore(a);
@@ -269,6 +340,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Merge VidSync Worker Subtitle API results (OpenSubtitles 60+ language VTTs)
+    if (Array.isArray(workerSubtitles)) {
+      for (const sub of workerSubtitles) {
+        if (!sub?.url) continue;
+        const sKey = (sub.language || sub.languageName || sub.label || sub.url).toLowerCase();
+        if (!seenSubs.has(sKey)) {
+          seenSubs.add(sKey);
+          aggregatedSubtitles.push({
+            lang: sub.language || sub.languageName || "en",
+            label: sub.label || sub.languageName || sub.language || "English",
+            url: sub.url,
+            default: sub.language === "eng" || sub.label?.toLowerCase() === "english",
+          });
+        }
+      }
+    }
+
+    // Extract secondary standby stream (MovieBox / NetMirror direct CDN) for Server 2
+    let secondaryStreamData: any = null;
+    for (const src of candidateSources) {
+      if (src.standbyUrl && /^https?:\/\//i.test(src.standbyUrl)) {
+        secondaryStreamData = {
+          playable: src.standbyUrl,
+          label: "Direct CDN (Server 2)",
+          provider: src.standbyProvider || "MovieBox",
+          type: src.standbyUrl.includes(".m3u8") ? "hls" : "mp4",
+        };
+        break;
+      }
+      const altUrl = src.directUrl || src.rawUrl || src.url;
+      if (altUrl && src.provider?.id !== "castle") {
+        secondaryStreamData = {
+          playable: altUrl,
+          label: "Direct CDN (Server 2)",
+          provider: src.provider?.name || "MovieBox",
+          type: altUrl.includes(".m3u8") ? "hls" : "mp4",
+        };
+        break;
+      }
+    }
+
     // Check candidate stream URLs for active 200 HTTP response
     for (const source of candidateSources) {
       const streamUrls = [source.directUrl, source.rawUrl, source.url, source.fallbackProxyUrl].filter(
@@ -299,6 +411,7 @@ export async function GET(request: NextRequest) {
           subtitles: aggregatedSubtitles.length > 0 ? aggregatedSubtitles : (source.subtitles || []),
           audioTracks: aggregatedAudioTracks,
           qualities: aggregatedQualities,
+          secondaryStream: secondaryStreamData,
           availableCount: candidateSources.length,
         };
 

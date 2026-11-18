@@ -1,0 +1,25 @@
+---
+description: Mandatory rules for VidSync Direct CDN resolution and playback
+globs: src/app/api/resolve-tg/**/*, src/components/VideoPlayer.tsx, src/components/VideoJSPlayer.tsx
+---
+
+# VidSync Direct CDN Integration Rules
+
+1. **Numeric TMDb ID Only**:
+   - VidSync's upstream worker cluster (`/api/core/streams` and `/api/subtitles`) routes media strictly using numeric TMDb IDs.
+   - NEVER pass IMDb IDs (`tt...`) into VidSync's `id` parameter. Doing so breaks the FNV-1a shard routing and produces ID collisions that return completely unrelated movies or TV series.
+
+2. **Title Matching Validation Guard**:
+   - Every candidate stream from VidSync's providers (Castle, MovieBox, NetMirror) contains title metadata (either in `source.title` or encoded in `source.fallbackProxyUrl`).
+   - Always validate `source.title` against the requested media title.
+   - If the titles do not match (e.g. requested "Castle Rock" but returned "Castle"), the stream must be rejected to prevent serving the wrong content.
+
+3. **Subtitles via Dedicated Subtitle API**:
+   - VidSync provides full multi-language subtitles via its dedicated endpoint: `${shard}/api/subtitles?id=${tmdbId}&type=${type}` (plus `&season=${s}&episode=${e}` for TV).
+   - Always query `/api/subtitles` in parallel with `/api/core/streams` to provide the complete 60+ language WebVTT subtitle catalog (English, Spanish, Arabic, French, Russian, etc.).
+
+4. **Multi-Source Resilience & Server 2 Fallback**:
+   - VidSync returns multiple distinct streaming providers:
+     - Primary: Google Cloud CDN (Castle HLS)
+     - Secondary: High-bitrate MovieBox / NetMirror direct streams
+   - Expose both Primary and Standby streams so the user always has a functional secondary Direct CDN fallback.

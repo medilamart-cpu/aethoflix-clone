@@ -81,10 +81,15 @@ export function MirrorPicker({
           let displayName: string;
           let subtitle: string;
 
+          const isServer2 =
+            isTheOG ||
+            label.toLowerCase().includes("server 2") ||
+            url.startsWith("direct:pending:server2");
+
           if (isVidSync) {
             displayName = "Server 1 (Direct CDN)";
             subtitle = isSelected ? "Now streaming" : "4K/1080p · Zero Ads";
-          } else if (isTheOG) {
+          } else if (isServer2) {
             displayName = "Server 2 (Direct CDN)";
             subtitle = isSelected ? "Now streaming" : "1080p · Fast Backup";
           } else if (isMultiHD) {
