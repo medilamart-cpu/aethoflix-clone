@@ -582,7 +582,10 @@ export function VideoPlayer({
       url.includes(".mp4?") ||
       url.includes("/api/v1/stream") ||
       url.includes("/p?t=") ||
-      url.startsWith("direct:"));
+      url.includes("/api/hls-master") ||
+      url.startsWith("blob:") ||
+      url.startsWith("direct:") ||
+      Boolean(selectedMirror?.toLowerCase().includes("direct")));
 
   const directStreamUrl = url?.replace(/^direct:/, "") || "";
 

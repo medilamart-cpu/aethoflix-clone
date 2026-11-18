@@ -61,6 +61,8 @@ export function MirrorPicker({
             url.includes(".mp4?") ||
             url.includes("/api/v1/stream") ||
             url.includes("/p?t=") ||
+            url.includes("/api/hls-master") ||
+            url.startsWith("blob:") ||
             url.startsWith("direct:") ||
             url.startsWith("pending:") ||
             label.toLowerCase().includes("direct");

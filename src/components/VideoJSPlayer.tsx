@@ -320,6 +320,8 @@ export function VideoJSPlayer({
 
   const isHls =
     activeSrc.includes(".m3u8") ||
+    activeSrc.includes("/api/hls-master") ||
+    activeSrc.startsWith("blob:") ||
     (!activeSrc.includes(".mp4") && !activeSrc.includes(".webm"));
 
   // Ensure Video.js native Quality and Audio menus have multi-rendition levels to display
