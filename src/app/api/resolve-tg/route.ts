@@ -250,7 +250,7 @@ export async function GET(request: NextRequest) {
             resolvedType = altType;
             break;
           }
-        } catch {}
+        } catch { }
       }
     }
 

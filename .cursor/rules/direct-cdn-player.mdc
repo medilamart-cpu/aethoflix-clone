@@ -1,0 +1,40 @@
+---
+description: Mandatory invariants for Direct CDN Video Player and VidSync Upstream Resolvers
+globs: src/components/VideoJSPlayer.tsx, src/components/VideoPlayer.tsx, src/app/api/resolve-tg/**/*, src/app/api/hls-master/**/*
+---
+
+# Direct CDN Player & VidSync Architecture Specification
+
+> **CRITICAL ARCHITECTURAL REFERENCE & REGRESSION SAFEGUARD**
+> This file defines the permanent invariants, layout specifications, and backend routing rules for the Aethoflix Direct CDN Video Player and VidSync upstream resolution pipeline. 
+> Whenever changes are made to streaming, players, or resolvers, this document serves as the ground truth to prevent breakages, missing menus, and wrong movie/show mismatches.
+
+---
+
+## 1. Core Invariants & Golden Rules
+
+1. **Pure Native Video.js 10 Architecture**:
+   - The player must use official `@videojs/react/video` components (`VideoPlayer`, `VideoSkin`, `HlsJsVideo`, `Video`, `usePlayer`).
+   - **ZERO floating buttons in corners**: Do NOT place custom floating "Settings", "Fullscreen", or "Quality" buttons in the top-right, top-left, or any corner overlay. All controls MUST live within Video.js's native bottom control bar.
+   - **Native Video.js Settings Gear Popup**: Quality (`QualityMenu`), Speed (`PlaybackRateSubmenu`), Captions (`CaptionsSubmenu`), and Audio (`AudioTrackMenu`) must be presented through Video.js's native gear menu popup.
+
+2. **The Multi-Rendition HLS Master Playlist Invariant**:
+   - Video.js's native `QualityRadioGroupCore` checks `availability = media.videoRenditionList.length > 1 ? "available" : "unavailable"`.
+   - If a stream playlist only contains 1 level (e.g. single 720p `.m3u8`), Video.js sets `hidden: true` and **completely hides the Quality row from the settings menu**, leaving only "Speed".
+   - **To guarantee the Quality row is always visible**, the player and resolver MUST supply a multi-rendition HLS Master Playlist (`#EXT-X-STREAM-INF`) combining all available levels (1080p, 720p, 480p) via `/api/hls-master` and client-side blob synthesis.
+
+3. **VidSync TMDb Numeric ID Strict Requirement**:
+   - VidSync's upstream worker cluster routes media through FNV-1a sharded hashing strictly using **numeric TMDb IDs**.
+   - **NEVER** pass IMDb IDs (`tt...`) into VidSync's `id` parameter. String IDs produce hash collisions that serve completely unrelated films or series (e.g. returning a random Hindi film or foreign drama instead of the requested title).
+
+4. **Mandatory Upstream Title Validation Guard**:
+   - Upstream shards frequently return candidate objects containing unrelated titles.
+   - Always sanitize and compare `source.title` against the requested media title using string normalization and similarity matching.
+   - Reject any candidate whose title does not match (e.g. requesting "Castle Rock" but receiving "Castle").
+
+5. **Cross-Type (`movie <-> tv`) Fallback**:
+   - Some entries (e.g. miniseries, TV movies, or catalog anomalies like TMDb `60948` *On the Comet*) exist in upstream shards as `tv` instead of `movie` (or vice-versa).
+   - If querying with the primary type yields 0 valid streams, automatically execute a fallback query with the alternate type.
+
+6. **Dedicated Upstream Subtitle Catalog**:
+   - Query `${shard}/api/subtitles?id=${tmdbId}&type=${type}` in parallel with streams to pull the full 60+ language WebVTT catalog (matching `vidsync.pro/demo`).
