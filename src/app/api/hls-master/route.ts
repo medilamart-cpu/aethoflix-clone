@@ -50,24 +50,10 @@ export async function GET(req: NextRequest) {
     // Filter to valid audio tracks
     const validAudios = audios.filter((a) => a && a.url && a.url.startsWith("http"));
 
-    // Check if there are genuine discrete audio-only renditions (e.g. .aac, .m4a).
-    // For multiplexed streams, the MPEG-TS segments already contain the elementary audio streams
-    // with their native PMT descriptors (hin, eng, tam, tel). Emitting synthetic #EXT-X-MEDIA tags
-    // in arbitrary order misaligns track indexes with the physical audio PIDs in the TS file,
-    // which caused "English" to play Hindi audio!
-    const pureAudioTracks = validAudios.filter(
-      (a) =>
-        a.url &&
-        (a.url.endsWith(".aac") ||
-          a.url.endsWith(".m4a") ||
-          a.url.includes("audio-only") ||
-          a.url.includes("/audio/"))
-    );
-
-    const hasExternalAudios = pureAudioTracks.length > 1;
-    if (hasExternalAudios) {
+    const hasAudios = validAudios.length > 1;
+    if (hasAudios) {
       const seenAudios = new Set<string>();
-      for (const a of pureAudioTracks) {
+      for (const a of validAudios) {
         const lang = a.language || "en";
         if (seenAudios.has(lang)) continue;
         seenAudios.add(lang);
@@ -75,13 +61,15 @@ export async function GET(req: NextRequest) {
         const label = a.label || lang.toUpperCase();
         const isDefault = lang === "en" || label.toLowerCase().includes("english");
 
+        // Note: URI attribute is omitted for multiplexed / stream-switch variants per RFC 8216
+        // so mobile iOS Safari / AVPlayer demuxes smoothly without infinite buffering.
         lines.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
+          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
         );
       }
     }
 
-    const audioAttr = hasExternalAudios ? ',AUDIO="audio"' : "";
+    const audioAttr = hasAudios ? ',AUDIO="audio"' : "";
 
     for (const q of sortedQualities) {
       const label = q.quality || "720p";

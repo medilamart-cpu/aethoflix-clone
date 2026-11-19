@@ -367,10 +367,12 @@ export async function GET(request: NextRequest) {
                         : aLang.toUpperCase());
       if (!seenAudios.has(aLang)) {
         seenAudios.add(aLang);
+        // Use language-specific fallback proxy if available so audio PID 0x101 matches the language
+        const audioTrackUrl = src.fallbackProxyUrl || sUrl;
         aggregatedAudioTracks.push({
           language: aLang,
           label: aLabel,
-          url: sUrl,
+          url: audioTrackUrl,
         });
       }
 
@@ -428,9 +430,14 @@ export async function GET(request: NextRequest) {
 
     // Check candidate stream URLs for active 200 HTTP response
     for (const source of candidateSources) {
-      const streamUrls = [source.directUrl, source.rawUrl, source.url, source.fallbackProxyUrl].filter(
-        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)
-      );
+      const isEnglish = (source.audio || source.audioLanguage || "").toLowerCase() === "en";
+      const streamUrls = [
+        isEnglish && source.fallbackProxyUrl ? source.fallbackProxyUrl : null,
+        source.directUrl,
+        source.rawUrl,
+        source.url,
+        source.fallbackProxyUrl,
+      ].filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
 
       for (const url of streamUrls) {
         // Filter out dummy preview clips, trailers, samples, and mislabeled teasers

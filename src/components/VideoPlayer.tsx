@@ -643,7 +643,7 @@ export function VideoPlayer({
           const activeMeta = directStreams.find((d) => d.label === selectedMirror || d.url === directStreamUrl);
           return (
             <VideoJSPlayer
-              key={`vjs-${directStreamUrl}`}
+              key="vjs-direct-player"
               src={directStreamUrl}
               poster={poster}
               subtitles={activeMeta?.subtitles}
@@ -654,6 +654,9 @@ export function VideoPlayer({
               storageKey={routingKey}
               onError={handleDirectError}
               onFirstFrame={handleFirstFrame}
+              onAudioChange={(audioItem) => {
+                console.log("[VideoPlayer] Audio track switched:", audioItem?.label);
+              }}
             />
           );
         })()}

@@ -5,7 +5,7 @@ import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
 import { useMedia } from "@videojs/react";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
-import { RotateCcw, Volume2 } from "lucide-react";
+import { RotateCcw, Volume2, AudioLines, Check } from "lucide-react";
 
 export interface QualityItem {
   quality: string;
@@ -247,6 +247,9 @@ function PlayerStateBridge({
           const trackLabel = selected.label || matched?.label || "Audio Track";
           setAudioNotice(`Audio: ${trackLabel}`);
           setTimeout(() => setAudioNotice(null), 3000);
+          if (matched && onAudioChange) {
+            onAudioChange(matched);
+          }
         }
       } catch (err) {
         console.warn("[VideoJS] Error switching audio track:", err);
@@ -368,17 +371,88 @@ export function VideoJSPlayer({
   onError,
   onFirstFrame,
 }: VideoJSPlayerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const savedSeekTimeRef = useRef<number | null>(null);
+  const savedPausedRef = useRef<boolean>(false);
+  const [selectedAudioLang, setSelectedAudioLang] = useState<string>("en");
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [activeSrc, setActiveSrc] = useState(src);
 
   useEffect(() => {
     setActiveSrc(src);
   }, [src]);
 
+  // Candidate audio tracks list for dedicated player control
+  const audioTrackList = useMemo(() => {
+    const list: Array<{ id: string; label: string; language: string; url?: string }> = [];
+    if (Array.isArray(availableAudio)) {
+      availableAudio.forEach((item: any, idx: number) => {
+        if (typeof item === "string") {
+          list.push({
+            id: String(idx),
+            label: item.charAt(0).toUpperCase() + item.slice(1),
+            language: item.toLowerCase(),
+          });
+        } else if (item && typeof item === "object") {
+          const lang = (item.language || item.lang || "en").toLowerCase();
+          const label =
+            item.label ||
+            (lang === "en"
+              ? "English (Original)"
+              : lang === "hi"
+                ? "Hindi"
+                : lang === "ta"
+                  ? "Tamil"
+                  : lang === "te"
+                    ? "Telugu"
+                    : lang.toUpperCase());
+          list.push({
+            id: String(idx),
+            label,
+            language: lang,
+            url: item.url,
+          });
+        }
+      });
+    }
+    return list;
+  }, [availableAudio]);
+
   const handleAudioSelect = (audioItem: any) => {
+    if (!audioItem) return;
+    const videoEl = containerRef.current?.querySelector("video");
+    const currentTime = videoEl?.currentTime || 0;
+    const wasPaused = videoEl?.paused ?? false;
+
+    savedSeekTimeRef.current = currentTime > 0 ? currentTime : null;
+    savedPausedRef.current = wasPaused;
+
+    const lang = (audioItem.language || audioItem.lang || "en").toLowerCase();
+    setSelectedAudioLang(lang);
+    setShowAudioMenu(false);
+
     if (audioItem?.url && audioItem.url !== activeSrc) {
+      console.log(`[VideoJS] Switching audio stream to ${audioItem.label} (${audioItem.url})`);
       setActiveSrc(audioItem.url);
     }
     onAudioChange?.(audioItem);
+  };
+
+  const handleMediaReady = () => {
+    onFirstFrame?.();
+    if (savedSeekTimeRef.current !== null) {
+      const targetTime = savedSeekTimeRef.current;
+      savedSeekTimeRef.current = null;
+      const videoEl = containerRef.current?.querySelector("video");
+      if (videoEl && isFinite(targetTime) && targetTime > 0) {
+        try {
+          videoEl.currentTime = targetTime;
+        } catch {}
+      }
+      if (!savedPausedRef.current) {
+        videoEl?.play?.().catch(() => {});
+      }
+    }
   };
 
   const isHls =
@@ -448,7 +522,7 @@ export function VideoJSPlayer({
 
           const isDefault = isFirst || lang === "en";
           lines.push(
-            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${a.url}"`
+            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
           );
           isFirst = false;
         }
@@ -509,7 +583,11 @@ export function VideoJSPlayer({
   }, [effectiveSrc]);
 
   return (
-    <div className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}>
+    <div
+      ref={containerRef}
+      onClick={() => setShowAudioMenu(false)}
+      className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}
+    >
       <VideoPlayer poster={poster}>
         <PlayerStateBridge
           storageKey={storageKey}
@@ -540,9 +618,9 @@ export function VideoJSPlayer({
               preload="auto"
               crossOrigin="anonymous"
               autoPlay={autoplay}
-              onLoadedData={onFirstFrame}
-              onCanPlay={onFirstFrame}
-              onPlay={onFirstFrame}
+              onLoadedData={handleMediaReady}
+              onCanPlay={handleMediaReady}
+              onPlay={handleMediaReady}
             >
               {subtitles?.map((s, idx) => (
                 <track
@@ -562,9 +640,9 @@ export function VideoJSPlayer({
               preload="auto"
               crossOrigin="anonymous"
               autoPlay={autoplay}
-              onLoadedData={onFirstFrame}
-              onCanPlay={onFirstFrame}
-              onPlay={onFirstFrame}
+              onLoadedData={handleMediaReady}
+              onCanPlay={handleMediaReady}
+              onPlay={handleMediaReady}
             >
               {subtitles?.map((s, idx) => (
                 <track
@@ -580,6 +658,56 @@ export function VideoJSPlayer({
           )}
         </VideoSkin>
       </VideoPlayer>
+
+      {/* Dedicated Audio Language Selector (TGFLIX Style |||) */}
+      {audioTrackList.length > 1 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-[16px] right-[100px] z-30"
+        >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowAudioMenu((prev) => !prev)}
+              title="Audio Language"
+              className="flex items-center justify-center h-8 w-8 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors focus:outline-none"
+            >
+              <AudioLines className="h-5 w-5" />
+            </button>
+
+            {/* Audio Selection Dropdown Menu */}
+            {showAudioMenu && (
+              <div className="absolute bottom-10 right-0 mb-2 w-48 rounded-xl bg-[#0c0c0e]/95 border border-white/15 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 border-b border-white/10 mb-1">
+                  Audio Language
+                </div>
+                <div className="space-y-0.5">
+                  {audioTrackList.map((track) => {
+                    const isSelected =
+                      selectedAudioLang === track.language ||
+                      (selectedAudioLang === "en" && track.language.startsWith("en"));
+                    return (
+                      <button
+                        key={track.id || track.language}
+                        type="button"
+                        onClick={() => handleAudioSelect(track)}
+                        className={`flex items-center justify-between w-full rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
+                          isSelected
+                            ? "bg-red-600/20 text-white font-semibold"
+                            : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        <span>{track.label}</span>
+                        {isSelected && <Check className="h-3.5 w-3.5 text-red-500" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
