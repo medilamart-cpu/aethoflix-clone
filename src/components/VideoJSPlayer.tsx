@@ -160,39 +160,67 @@ function PlayerStateBridge({
 
     const populateAudioTracks = () => {
       if (populatingAudioRef.current) return;
-      if (!media.audioTracks) return;
+      if (!media) return;
 
       const currentTargetId = selectedAudioIdRef.current || "0";
 
-      // If tracks already present from hls.js or native demuxer, synchronize enabled state
-      if (media.audioTracks.length > 0) {
+      // If media already has an active audio track list with our custom tracks, just sync enabled state
+      if (media.audioTracks && media.audioTracks.length > 0 && (media.audioTracks as any)._isCustom) {
         for (const t of media.audioTracks) {
-          const shouldEnable = t.id === currentTargetId;
-          if (t.enabled !== shouldEnable) {
-            t.enabled = shouldEnable;
-          }
+          t._enabled = t.id === currentTargetId;
         }
-        maybeAutoSelectEnglish();
+        media.audioTracks.dispatchEvent(new Event("change"));
         return;
       }
 
       populatingAudioRef.current = true;
       try {
-        normalizedAudios.forEach((item, idx) => {
-          if (typeof media.addAudioTrack === "function") {
-            const track = media.addAudioTrack(idx === 0 ? "main" : "alternative", item.label, item.language);
-            if (track) {
-              track.id = item.id;
-              track.enabled = item.id === currentTargetId;
-            }
-          }
+        const trackListTarget = new EventTarget();
+        const tracks = normalizedAudios.map((item, idx) => {
+          return {
+            id: item.id,
+            label: item.label,
+            language: item.language,
+            kind: idx === 0 ? "main" : "alternative",
+            _enabled: item.id === currentTargetId,
+            get enabled() {
+              return this._enabled;
+            },
+            set enabled(val: boolean) {
+              if (this._enabled !== val) {
+                this._enabled = val;
+                trackListTarget.dispatchEvent(new Event("change"));
+              }
+            },
+          };
         });
-      } catch { }
 
-      setTimeout(() => {
+        const customTrackList = Object.assign(trackListTarget, {
+          _isCustom: true,
+          length: tracks.length,
+          [Symbol.iterator]: () => tracks[Symbol.iterator](),
+          map: (fn: any) => tracks.map(fn),
+          find: (fn: any) => tracks.find(fn),
+          findIndex: (fn: any) => tracks.findIndex(fn),
+          filter: (fn: any) => tracks.filter(fn),
+          some: (fn: any) => tracks.some(fn),
+          forEach: (fn: any) => tracks.forEach(fn),
+        });
+        tracks.forEach((t, i) => {
+          (customTrackList as any)[i] = t;
+        });
+
+        Object.defineProperty(media, "audioTracks", {
+          get: () => customTrackList,
+          configurable: true,
+        });
+
+        customTrackList.dispatchEvent(new Event("change"));
+      } catch (err) {
+        console.warn("[VideoJS] Error populating audio tracks:", err);
+      } finally {
         populatingAudioRef.current = false;
-        maybeAutoSelectEnglish();
-      }, 80);
+      }
     };
 
     populateAudioTracks();
@@ -336,10 +364,13 @@ function PlayerStateBridge({
     }
   }, [currentTime, duration, storageKey]);
 
-  // Notify on stream error
+  // Notify on fatal stream error before first frame
   useEffect(() => {
     if (error) {
-      onError?.(error);
+      console.warn("[VideoJS] Player error event:", error);
+      if (!hasNotifiedFirstFrameRef.current) {
+        onError?.(error);
+      }
     }
   }, [error, onError]);
 
@@ -461,7 +492,7 @@ export function VideoJSPlayer({
     activeSrc.startsWith("blob:") ||
     (!activeSrc.includes(".mp4") && !activeSrc.includes(".webm"));
 
-  // Ensure Video.js native Quality and Audio menus have multi-rendition levels to display
+  // Ensure Video.js native Quality menu has multi-rendition levels to display
   const effectiveSrc = useMemo(() => {
     if (!activeSrc || !isHls) return activeSrc;
 
@@ -504,47 +535,8 @@ export function VideoJSPlayer({
       }
     }
 
-    // Collect all candidate Audio tracks
-    let hlsAudios: Array<{ id: string; language: string; label: string; url?: string }> = [];
-    if (Array.isArray(availableAudio)) {
-      availableAudio.forEach((a: any, idx: number) => {
-        if (a && typeof a === "object") {
-          hlsAudios.push({
-            id: String(idx),
-            language: a.language || a.lang || "en",
-            label: a.label || a.language || "English",
-            url: a.url,
-          });
-        }
-      });
-    }
-
-    const hasMultipleQualities = hlsQualities.length > 1;
-    const hasMultipleAudios = hlsAudios.length > 1;
-
-    if ((hasMultipleQualities || hasMultipleAudios) && typeof window !== "undefined") {
+    if (hlsQualities.length > 1 && typeof window !== "undefined") {
       const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
-
-      // Audio tracks definition
-      if (hasMultipleAudios) {
-        const seenAudios = new Set<string>();
-        let isFirst = true;
-        for (const a of hlsAudios) {
-          const lang = a.language;
-          if (seenAudios.has(lang)) continue;
-          seenAudios.add(lang);
-
-          const isSelected =
-            String(a.id) === String(selectedAudioId) ||
-            (!selectedAudioId && (isFirst || lang === "en"));
-          lines.push(
-            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isSelected ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
-          );
-          isFirst = false;
-        }
-      }
-
-      const audioAttr = hasMultipleAudios ? ',AUDIO="audio"' : "";
 
       const sorted = [...hlsQualities].sort((a, b) => {
         const hA = parseInt(a.quality) || 0;
@@ -577,7 +569,7 @@ export function VideoJSPlayer({
         }
 
         lines.push(
-          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height}${audioAttr},NAME="${label}"`
+          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
         );
         lines.push(q.url);
       }
@@ -588,7 +580,7 @@ export function VideoJSPlayer({
     }
 
     return activeSrc;
-  }, [activeSrc, isHls, availableQualities, availableAudio, selectedAudioId]);
+  }, [activeSrc, isHls, availableQualities]);
 
   useEffect(() => {
     return () => {

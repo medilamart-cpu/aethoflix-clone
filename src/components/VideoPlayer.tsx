@@ -535,11 +535,16 @@ export function VideoPlayer({
   }, [isFullscreen]);
 
   const handleDirectError = useCallback(() => {
+    // If direct stream was already playing, ignore transient engine/rendition switch errors
+    if (!isDirectLoading) {
+      console.warn("[VideoPlayer] Direct stream reported transient error, preserving playback");
+      return;
+    }
     setIsDirectLoading(false);
     setShowDirectLoader(false);
     setIframeError(true);
     handleAutoFailover();
-  }, [handleAutoFailover]);
+  }, [isDirectLoading, handleAutoFailover]);
 
   const handleIframeError = useCallback(() => {
     setIframeError(true);
