@@ -62,6 +62,8 @@ export function MirrorPicker({
             url.includes("/api/v1/stream") ||
             url.includes("/p?t=") ||
             url.includes("/api/hls-master") ||
+            url.includes("/api/core/proxy") ||
+            url.includes("defaultAudio=") ||
             url.startsWith("blob:") ||
             url.startsWith("direct:") ||
             url.startsWith("pending:") ||

@@ -447,10 +447,10 @@ export function VideoJSPlayer({
       if (videoEl && isFinite(targetTime) && targetTime > 0) {
         try {
           videoEl.currentTime = targetTime;
-        } catch {}
+        } catch { }
       }
       if (!savedPausedRef.current) {
-        videoEl?.play?.().catch(() => {});
+        videoEl?.play?.().catch(() => { });
       }
     }
   };
@@ -464,7 +464,14 @@ export function VideoJSPlayer({
   // Ensure Video.js native Quality and Audio menus have multi-rendition levels to display
   const effectiveSrc = useMemo(() => {
     if (!activeSrc || !isHls) return activeSrc;
-    if (activeSrc.startsWith("/api/hls-master")) return activeSrc;
+    // Direct stream URLs from language proxy or hls-master should be played directly as-is!
+    if (
+      activeSrc.startsWith("/api/hls-master") ||
+      activeSrc.includes("/api/core/proxy") ||
+      activeSrc.includes("defaultAudio=")
+    ) {
+      return activeSrc;
+    }
 
     // Collect all candidate HLS stream renditions
     let hlsQualities: Array<{ quality: string; url: string }> = [];
@@ -691,11 +698,10 @@ export function VideoJSPlayer({
                         key={track.id || track.language}
                         type="button"
                         onClick={() => handleAudioSelect(track)}
-                        className={`flex items-center justify-between w-full rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
-                          isSelected
+                        className={`flex items-center justify-between w-full rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${isSelected
                             ? "bg-red-600/20 text-white font-semibold"
                             : "text-neutral-300 hover:bg-white/10 hover:text-white"
-                        }`}
+                          }`}
                       >
                         <span>{track.label}</span>
                         {isSelected && <Check className="h-3.5 w-3.5 text-red-500" />}

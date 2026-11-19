@@ -451,14 +451,18 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Multi-rendition HLS Master Playlist: when multiple discrete stream qualities or
-        // audio languages exist, construct a master playlist so Video.js's native Quality and Audio menus detect all tracks.
+        // Multi-rendition stream qualities
         const hlsStreams = aggregatedQualities.filter(
           (q) => q && q.url && q.url.includes(".m3u8")
         );
 
-        let finalPlayable = url;
-        if (hlsStreams.length > 1 || aggregatedAudioTracks.length > 1) {
+        // For multi-audio titles, start directly with the English audio rendition (defaultAudio=en)
+        // so that elementary stream 0x101 is English rather than raw Castle Hindi.
+        const primaryAudioTrack =
+          aggregatedAudioTracks.find((a) => a.language === "en") || aggregatedAudioTracks[0];
+        let finalPlayable = primaryAudioTrack?.url || url;
+
+        if (aggregatedAudioTracks.length <= 1 && hlsStreams.length > 1) {
           const payload = {
             qualities: hlsStreams,
             audios: aggregatedAudioTracks,
