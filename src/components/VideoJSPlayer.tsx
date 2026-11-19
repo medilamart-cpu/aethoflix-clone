@@ -52,15 +52,19 @@ function PlayerStateBridge({
   onFirstFrame,
   onError,
   availableAudio,
+  availableQualities,
   selectedAudioId = "0",
   onAudioChange,
+  onQualityChange,
 }: {
   storageKey?: string;
   onFirstFrame?: () => void;
   onError?: (err: any) => void;
   availableAudio?: AudioItem[] | string[] | any;
+  availableQualities?: QualityItem[] | string[] | any;
   selectedAudioId?: string;
   onAudioChange?: (audio: any) => void;
+  onQualityChange?: (quality: any) => void;
 }) {
   const store = usePlayer();
   const media = useMedia() as any;
@@ -74,6 +78,7 @@ function PlayerStateBridge({
   const hasResumedRef = useRef(false);
   const hasNotifiedFirstFrameRef = useRef(false);
   const populatingAudioRef = useRef(false);
+  const populatingRenditionsRef = useRef(false);
 
   const userSelectedAudioRef = useRef(false);
   const hasAutoSelectedRef = useRef(false);
@@ -133,39 +138,17 @@ function PlayerStateBridge({
     return list;
   }, [availableAudio]);
 
-  // Sync and manage audio tracks with native engine and Video.js
+  // Sync and manage audio tracks & video renditions with Video.js Settings menu
   useEffect(() => {
     if (!media) return;
 
-    // Helper to auto-select English if default track is foreign (e.g. Hindi track 0)
-    // Runs AT MOST ONCE on initial stream launch and NEVER overrides user selection
-    const maybeAutoSelectEnglish = () => {
-      if (userSelectedAudioRef.current || hasAutoSelectedRef.current || selectedAudioIdRef.current !== "0") return;
-      const engine = media.engine;
-      if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 1) {
-        const engIdx = engine.audioTracks.findIndex((t: any) => {
-          const l = (t.lang || "").toLowerCase();
-          const n = (t.name || "").toLowerCase();
-          return l === "en" || l === "eng" || n.includes("english");
-        });
-        if (engIdx !== -1) {
-          hasAutoSelectedRef.current = true;
-          if (engine.audioTrack !== engIdx) {
-            console.log(`[VideoJS] Auto-selecting initial English audio track at index ${engIdx}`);
-            engine.audioTrack = engIdx;
-          }
-        }
-      }
-    };
-
     const populateAudioTracks = () => {
-      if (populatingAudioRef.current) return;
-      if (!media) return;
+      if (populatingAudioRef.current || !media) return;
 
       const currentTargetId = selectedAudioIdRef.current || "0";
 
-      // If media already has an active audio track list with our custom tracks, just sync enabled state
-      if (media.audioTracks && media.audioTracks.length > 0 && (media.audioTracks as any)._isCustom) {
+      // If media already has custom tracks attached, simply update enabled flag
+      if (media.audioTracks && (media.audioTracks as any)._isCustom) {
         for (const t of media.audioTracks) {
           t._enabled = t.id === currentTargetId;
         }
@@ -223,10 +206,112 @@ function PlayerStateBridge({
       }
     };
 
-    populateAudioTracks();
+    const populateVideoRenditions = () => {
+      if (populatingRenditionsRef.current || !media) return;
+      if (media.videoRenditions && (media.videoRenditions as any)._isCustom) return;
 
-    // Listen for media readiness & track list changes to maintain tracks
-    const onMediaReady = () => populateAudioTracks();
+      populatingRenditionsRef.current = true;
+      try {
+        const renditionListTarget = new EventTarget();
+        let renditions: Array<{
+          id: string;
+          width: number;
+          height: number;
+          bitrate: number;
+          selected: boolean;
+          active: boolean;
+          url?: string;
+        }> = [];
+
+        if (Array.isArray(availableQualities) && availableQualities.length > 0) {
+          availableQualities.forEach((q: any, idx: number) => {
+            const label = typeof q === "string" ? q : (q.quality || "720p");
+            const h = parseInt(label) || 720;
+            const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
+            const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
+            renditions.push({
+              id: label,
+              width: w,
+              height: h,
+              bitrate: b,
+              selected: false,
+              active: idx === 0,
+              url: typeof q === "object" ? q.url : undefined,
+            });
+          });
+        }
+
+        if (renditions.length <= 1) {
+          renditions = [
+            { id: "1080p", width: 1920, height: 1080, bitrate: 5000000, selected: false, active: true },
+            { id: "720p", width: 1280, height: 720, bitrate: 2500000, selected: false, active: false },
+            { id: "480p", width: 854, height: 480, bitrate: 1200000, selected: false, active: false },
+          ];
+        }
+
+        let selectedIdx = -1; // -1 = Auto
+
+        const customRenditions = Object.assign(renditionListTarget, {
+          _isCustom: true,
+          length: renditions.length,
+          get selectedIndex() {
+            return selectedIdx;
+          },
+          set selectedIndex(val: number) {
+            selectedIdx = val;
+            renditions.forEach((r, i) => {
+              r.selected = i === val;
+              r.active = val === -1 ? i === 0 : i === val;
+            });
+
+            if (media.engine && typeof media.engine.currentLevel !== "undefined") {
+              try {
+                media.engine.currentLevel = val;
+              } catch {}
+            }
+
+            if (val >= 0 && renditions[val]?.url && onQualityChange) {
+              onQualityChange(renditions[val]);
+            }
+
+            renditionListTarget.dispatchEvent(new Event("change"));
+          },
+          [Symbol.iterator]: () => renditions[Symbol.iterator](),
+          map: (fn: any) => renditions.map(fn),
+          find: (fn: any) => renditions.find(fn),
+          findIndex: (fn: any) => renditions.findIndex(fn),
+          filter: (fn: any) => renditions.filter(fn),
+          some: (fn: any) => renditions.some(fn),
+          forEach: (fn: any) => renditions.forEach(fn),
+        });
+
+        renditions.forEach((r, i) => {
+          (customRenditions as any)[i] = r;
+        });
+
+        Object.defineProperty(media, "videoRenditions", {
+          get: () => customRenditions,
+          configurable: true,
+        });
+
+        customRenditions.dispatchEvent(new Event("change"));
+      } catch (err) {
+        console.warn("[VideoJS] Error populating video renditions:", err);
+      } finally {
+        populatingRenditionsRef.current = false;
+      }
+    };
+
+    populateAudioTracks();
+    populateVideoRenditions();
+
+    // Listen for media readiness to ensure menus are always populated
+    const onMediaReady = () => {
+      populateAudioTracks();
+      populateVideoRenditions();
+    };
+
+    media.addEventListener?.("loadstart", onMediaReady);
     media.addEventListener?.("loadedmetadata", onMediaReady);
     media.addEventListener?.("canplay", onMediaReady);
 
@@ -240,7 +325,7 @@ function PlayerStateBridge({
           userSelectedAudioRef.current = true;
           hasAutoSelectedRef.current = true;
 
-          // If track matches current selection, ignore to prevent re-entrant loops
+          // If track matches current selection, ignore to prevent loops
           if (selected.id === selectedAudioIdRef.current) {
             return;
           }
@@ -249,22 +334,19 @@ function PlayerStateBridge({
           const selectedLabel = (selected.label || "").toLowerCase();
           const selectedIdNum = Number(selected.id);
 
-          // 1. If hls.js engine exists, switch the engine audioTrack!
+          // 1. If hls.js engine exists, switch the engine audioTrack
           const engine = media.engine;
           if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 0) {
             let targetIdx = -1;
-            // First attempt: match by numeric ID
             if (!isNaN(selectedIdNum) && engine.audioTracks.some((t: any) => t.id === selectedIdNum)) {
               targetIdx = engine.audioTracks.findIndex((t: any) => t.id === selectedIdNum);
             }
-            // Second attempt: match by language code (en, hi, ta, te)
             if (targetIdx === -1 && selectedLang) {
               targetIdx = engine.audioTracks.findIndex((t: any) => {
                 const tLang = (t.lang || "").toLowerCase();
                 return tLang === selectedLang || tLang.startsWith(selectedLang) || selectedLang.startsWith(tLang);
               });
             }
-            // Third attempt: match by label name (English, Hindi, etc.)
             if (targetIdx === -1 && selectedLabel) {
               targetIdx = engine.audioTracks.findIndex((t: any) => {
                 const tName = (t.name || "").toLowerCase();
@@ -280,7 +362,7 @@ function PlayerStateBridge({
             }
           }
 
-          // 2. Find matched info for toast
+          // 2. Find matched info for toast and stream switch
           const matched = normalizedAudios.find(
             (r) =>
               r.id === selected.id ||
@@ -304,11 +386,12 @@ function PlayerStateBridge({
     media.audioTracks?.addEventListener?.("change", onTrackChange);
 
     return () => {
+      media.removeEventListener?.("loadstart", onMediaReady);
       media.removeEventListener?.("loadedmetadata", onMediaReady);
       media.removeEventListener?.("canplay", onMediaReady);
       media.audioTracks?.removeEventListener?.("change", onTrackChange);
     };
-  }, [media, normalizedAudios, onAudioChange, selectedAudioId]);
+  }, [media, normalizedAudios, availableQualities, onAudioChange, onQualityChange, selectedAudioId]);
 
   // Format MM:SS helper
   const formatTime = (secs: number) => {
@@ -469,6 +552,21 @@ export function VideoJSPlayer({
     onAudioChange?.(audioItem);
   };
 
+  const handleQualitySelect = (qualityItem: any) => {
+    if (!qualityItem) return;
+    const videoEl = containerRef.current?.querySelector("video");
+    const currentTime = videoEl?.currentTime || 0;
+    const wasPaused = videoEl?.paused ?? false;
+
+    savedSeekTimeRef.current = currentTime > 0 ? currentTime : null;
+    savedPausedRef.current = wasPaused;
+
+    if (qualityItem?.url && qualityItem.url !== activeSrc) {
+      console.log(`[VideoJS] Switching quality stream to ${qualityItem.id} (${qualityItem.url})`);
+      setActiveSrc(qualityItem.url);
+    }
+  };
+
   const handleMediaReady = () => {
     onFirstFrame?.();
     if (savedSeekTimeRef.current !== null) {
@@ -488,107 +586,9 @@ export function VideoJSPlayer({
 
   const isHls =
     activeSrc.includes(".m3u8") ||
-    activeSrc.includes("/api/hls-master") ||
-    activeSrc.startsWith("blob:") ||
+    activeSrc.includes("/api/core/proxy") ||
+    activeSrc.includes("/api/resolve") ||
     (!activeSrc.includes(".mp4") && !activeSrc.includes(".webm"));
-
-  // Ensure Video.js native Quality menu has multi-rendition levels to display
-  const effectiveSrc = useMemo(() => {
-    if (!activeSrc || !isHls) return activeSrc;
-
-    // Collect all candidate HLS stream renditions
-    let hlsQualities: Array<{ quality: string; url: string }> = [];
-
-    // Derive multi-quality URLs from activeSrc (which contains current audio track proxy)
-    const has720 = activeSrc.includes("/720/") || activeSrc.includes("%2F720%2F");
-    const has1080 = activeSrc.includes("/1080/") || activeSrc.includes("%2F1080%2F");
-
-    if (has720) {
-      hlsQualities = [
-        {
-          quality: "1080p",
-          url: activeSrc.replaceAll("%2F720%2F", "%2F1080%2F").replaceAll("/720/", "/1080/"),
-        },
-        { quality: "720p", url: activeSrc },
-        {
-          quality: "480p",
-          url: activeSrc.replaceAll("%2F720%2F", "%2F480%2F").replaceAll("/720/", "/480/"),
-        },
-      ];
-    } else if (has1080) {
-      hlsQualities = [
-        { quality: "1080p", url: activeSrc },
-        {
-          quality: "720p",
-          url: activeSrc.replaceAll("%2F1080%2F", "%2F720%2F").replaceAll("/1080/", "/720/"),
-        },
-        {
-          quality: "480p",
-          url: activeSrc.replaceAll("%2F1080%2F", "%2F480%2F").replaceAll("/1080/", "/480/"),
-        },
-      ];
-    } else if (Array.isArray(availableQualities)) {
-      for (const q of availableQualities) {
-        if (q && typeof q === "object" && q.url && q.url.includes(".m3u8")) {
-          hlsQualities.push({ quality: q.quality || "720p", url: q.url });
-        }
-      }
-    }
-
-    if (hlsQualities.length > 1 && typeof window !== "undefined") {
-      const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
-
-      const sorted = [...hlsQualities].sort((a, b) => {
-        const hA = parseInt(a.quality) || 0;
-        const hB = parseInt(b.quality) || 0;
-        return hB - hA;
-      });
-
-      const seen = new Set<string>();
-      for (const q of sorted) {
-        const label = q.quality || "720p";
-        if (seen.has(label)) continue;
-        seen.add(label);
-
-        const height = parseInt(label) || 720;
-        let width = 1280;
-        let bandwidth = 2500000;
-
-        if (height >= 1080) {
-          width = 1920;
-          bandwidth = 5000000;
-        } else if (height >= 720) {
-          width = 1280;
-          bandwidth = 2500000;
-        } else if (height >= 480) {
-          width = 854;
-          bandwidth = 1200000;
-        } else {
-          width = 640;
-          bandwidth = 800000;
-        }
-
-        lines.push(
-          `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
-        );
-        lines.push(q.url);
-      }
-
-      const manifest = lines.join("\n") + "\n";
-      const blob = new Blob([manifest], { type: "application/vnd.apple.mpegurl" });
-      return URL.createObjectURL(blob);
-    }
-
-    return activeSrc;
-  }, [activeSrc, isHls, availableQualities]);
-
-  useEffect(() => {
-    return () => {
-      if (effectiveSrc && effectiveSrc.startsWith("blob:")) {
-        URL.revokeObjectURL(effectiveSrc);
-      }
-    };
-  }, [effectiveSrc]);
 
   return (
     <div
@@ -601,8 +601,10 @@ export function VideoJSPlayer({
           onFirstFrame={onFirstFrame}
           onError={onError}
           availableAudio={availableAudio}
+          availableQualities={availableQualities}
           selectedAudioId={selectedAudioId}
           onAudioChange={handleAudioSelect}
+          onQualityChange={handleQualitySelect}
         />
         <VideoSkin
           style={
@@ -621,7 +623,7 @@ export function VideoJSPlayer({
         >
           {isHls ? (
             <HlsJsVideo
-              src={effectiveSrc}
+              src={activeSrc}
               playsInline
               preload="auto"
               crossOrigin="anonymous"
