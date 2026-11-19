@@ -254,6 +254,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Ensure all candidate source proxy URLs have absolute shard domains
+    if (candidateSources.length > 0 && activeShard) {
+      candidateSources = candidateSources.map((s: any) => {
+        const copy = { ...s };
+        if (typeof copy.fallbackProxyUrl === "string" && copy.fallbackProxyUrl.startsWith("/")) {
+          copy.fallbackProxyUrl = `${activeShard}${copy.fallbackProxyUrl}`;
+        }
+        if (typeof copy.url === "string" && copy.url.startsWith("/")) {
+          copy.url = `${activeShard}${copy.url}`;
+        }
+        if (typeof copy.directUrl === "string" && copy.directUrl.startsWith("/")) {
+          copy.directUrl = `${activeShard}${copy.directUrl}`;
+        }
+        if (typeof copy.rawUrl === "string" && copy.rawUrl.startsWith("/")) {
+          copy.rawUrl = `${activeShard}${copy.rawUrl}`;
+        }
+        return copy;
+      });
+    }
+
     // ── Title Matching Validation Guard ──
     // If title is passed and multiple sources exist, prioritize exact matching title
     if (title && candidateSources.length > 1) {
@@ -461,6 +481,9 @@ export async function GET(request: NextRequest) {
         const primaryAudioTrack =
           aggregatedAudioTracks.find((a) => a.language === "en") || aggregatedAudioTracks[0];
         let finalPlayable = primaryAudioTrack?.url || url;
+        if (typeof finalPlayable === "string" && finalPlayable.startsWith("/") && !finalPlayable.startsWith("/api/hls-master")) {
+          finalPlayable = `${activeShard}${finalPlayable}`;
+        }
 
         if (aggregatedAudioTracks.length <= 1 && hlsStreams.length > 1) {
           const payload = {
