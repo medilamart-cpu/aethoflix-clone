@@ -5,7 +5,7 @@ import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
 import { useMedia } from "@videojs/react";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
-import { RotateCcw, Volume2 } from "lucide-react";
+import { RotateCcw, Volume2, Layers } from "lucide-react";
 
 export interface QualityItem {
   quality: string;
@@ -75,6 +75,7 @@ function PlayerStateBridge({
 
   const [resumedNotice, setResumedNotice] = useState<string | null>(null);
   const [audioNotice, setAudioNotice] = useState<string | null>(null);
+  const [qualityNotice, setQualityNotice] = useState<string | null>(null);
   const hasResumedRef = useRef(false);
   const hasNotifiedFirstFrameRef = useRef(false);
   const populatingAudioRef = useRef(false);
@@ -84,6 +85,7 @@ function PlayerStateBridge({
   const hasAutoSelectedRef = useRef(false);
   const selectedAudioIdRef = useRef(selectedAudioId);
   selectedAudioIdRef.current = selectedAudioId;
+  const selectedQualityHeightRef = useRef<number>(-1);
 
   // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
@@ -208,12 +210,23 @@ function PlayerStateBridge({
 
     const populateVideoRenditions = () => {
       if (populatingRenditionsRef.current || !media) return;
-      if (media.videoRenditions && (media.videoRenditions as any)._isCustom) return;
+
+      const currentTargetHeight = selectedQualityHeightRef.current;
+
+      // If media already has custom renditions, update selected state in place
+      if (media.videoRenditions && (media.videoRenditions as any)._isCustom) {
+        const rends = [...media.videoRenditions];
+        const matchIdx = currentTargetHeight > 0 ? rends.findIndex((r: any) => r.height === currentTargetHeight) : -1;
+        if (media.videoRenditions.selectedIndex !== matchIdx) {
+          media.videoRenditions.selectedIndex = matchIdx;
+        }
+        return;
+      }
 
       populatingRenditionsRef.current = true;
       try {
         const renditionListTarget = new EventTarget();
-        let renditions: Array<{
+        const renditions: Array<{
           id: string;
           width: number;
           height: number;
@@ -223,33 +236,60 @@ function PlayerStateBridge({
           url?: string;
         }> = [];
 
-        if (Array.isArray(availableQualities) && availableQualities.length > 0) {
-          availableQualities.forEach((q: any, idx: number) => {
-            const label = typeof q === "string" ? q : (q.quality || "720p");
-            const h = parseInt(label) || 720;
+        const seenHeights = new Set<number>();
+        const filteredQualities = (Array.isArray(availableQualities) ? availableQualities : [])
+          .filter((q: any) => {
+            const label = (typeof q === "string" ? q : (q?.quality || "")).toLowerCase();
+            return label && !label.includes("auto");
+          });
+
+        filteredQualities.forEach((q: any) => {
+          const label = typeof q === "string" ? q : (q.quality || "720p");
+          const h = parseInt(label) || 720;
+          if (seenHeights.has(h)) return;
+          seenHeights.add(h);
+
+          const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
+          const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
+          renditions.push({
+            id: `${h}p`,
+            width: w,
+            height: h,
+            bitrate: b,
+            selected: false,
+            active: false,
+            url: typeof q === "object" ? q.url : undefined,
+          });
+        });
+
+        // Always guarantee standard multi-resolutions if not present
+        [1080, 720, 480].forEach((h) => {
+          if (!seenHeights.has(h)) {
+            seenHeights.add(h);
             const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
             const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
             renditions.push({
-              id: label,
+              id: `${h}p`,
               width: w,
               height: h,
               bitrate: b,
               selected: false,
-              active: idx === 0,
-              url: typeof q === "object" ? q.url : undefined,
+              active: false,
             });
-          });
-        }
+          }
+        });
 
-        if (renditions.length <= 1) {
-          renditions = [
-            { id: "1080p", width: 1920, height: 1080, bitrate: 5000000, selected: false, active: true },
-            { id: "720p", width: 1280, height: 720, bitrate: 2500000, selected: false, active: false },
-            { id: "480p", width: 854, height: 480, bitrate: 1200000, selected: false, active: false },
-          ];
-        }
+        // Sort descending: 1080p, 720p, 480p
+        renditions.sort((a, b) => b.height - a.height);
 
-        let selectedIdx = -1; // -1 = Auto
+        let selectedIdx = currentTargetHeight > 0
+          ? renditions.findIndex(r => r.height === currentTargetHeight)
+          : -1;
+
+        renditions.forEach((r, i) => {
+          r.selected = i === selectedIdx;
+          r.active = selectedIdx === -1 ? i === 0 : i === selectedIdx;
+        });
 
         const customRenditions = Object.assign(renditionListTarget, {
           _isCustom: true,
@@ -259,6 +299,9 @@ function PlayerStateBridge({
           },
           set selectedIndex(val: number) {
             selectedIdx = val;
+            const chosen = val >= 0 ? renditions[val] : null;
+            selectedQualityHeightRef.current = chosen ? chosen.height : -1;
+
             renditions.forEach((r, i) => {
               r.selected = i === val;
               r.active = val === -1 ? i === 0 : i === val;
@@ -270,8 +313,13 @@ function PlayerStateBridge({
               } catch {}
             }
 
-            if (val >= 0 && renditions[val]?.url && onQualityChange) {
-              onQualityChange(renditions[val]);
+            if (chosen) {
+              setQualityNotice(`Quality: ${chosen.id}`);
+              setTimeout(() => setQualityNotice(null), 3000);
+            }
+
+            if (chosen && onQualityChange) {
+              onQualityChange(chosen);
             }
 
             renditionListTarget.dispatchEvent(new Event("change"));
@@ -474,6 +522,14 @@ function PlayerStateBridge({
           <span>{audioNotice}</span>
         </div>
       )}
+
+      {/* Quality Toast */}
+      {qualityNotice && (
+        <div className="absolute top-4 right-4 z-30 pointer-events-none flex items-center gap-2 rounded-xl bg-black/85 px-3.5 py-1.5 text-xs font-medium text-white shadow-xl border border-white/15 backdrop-blur-md animate-in fade-in duration-200">
+          <Layers className="h-3.5 w-3.5 text-red-500" />
+          <span>{qualityNotice}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -561,9 +617,23 @@ export function VideoJSPlayer({
     savedSeekTimeRef.current = currentTime > 0 ? currentTime : null;
     savedPausedRef.current = wasPaused;
 
-    if (qualityItem?.url && qualityItem.url !== activeSrc) {
-      console.log(`[VideoJS] Switching quality stream to ${qualityItem.id} (${qualityItem.url})`);
-      setActiveSrc(qualityItem.url);
+    const targetHeight = qualityItem.height || parseInt(qualityItem.id) || 720;
+    const targetStr = String(targetHeight);
+
+    let targetUrl = activeSrc;
+    if (activeSrc.includes("/720/") || activeSrc.includes("%2F720%2F")) {
+      targetUrl = activeSrc.replaceAll("%2F720%2F", `%2F${targetStr}%2F`).replaceAll("/720/", `/${targetStr}/`);
+    } else if (activeSrc.includes("/1080/") || activeSrc.includes("%2F1080%2F")) {
+      targetUrl = activeSrc.replaceAll("%2F1080%2F", `%2F${targetStr}%2F`).replaceAll("/1080/", `/${targetStr}/`);
+    } else if (activeSrc.includes("/480/") || activeSrc.includes("%2F480%2F")) {
+      targetUrl = activeSrc.replaceAll("%2F480%2F", `%2F${targetStr}%2F`).replaceAll("/480/", `/${targetStr}/`);
+    } else if (qualityItem.url && qualityItem.url.startsWith("http")) {
+      targetUrl = qualityItem.url;
+    }
+
+    if (targetUrl && targetUrl !== activeSrc) {
+      console.log(`[VideoJS] Switching quality stream to ${targetHeight}p (${targetUrl})`);
+      setActiveSrc(targetUrl);
     }
   };
 

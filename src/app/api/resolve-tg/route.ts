@@ -396,9 +396,10 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Collect Qualities
+      // Collect Qualities (skip "Auto" which is an adaptive container, not a rendition resolution)
       const qLabel = src.quality || "720p";
-      if (!seenQualities.has(qLabel)) {
+      const qLower = qLabel.toLowerCase();
+      if (!qLower.includes("auto") && !seenQualities.has(qLabel)) {
         seenQualities.add(qLabel);
         aggregatedQualities.push({
           quality: qLabel,
