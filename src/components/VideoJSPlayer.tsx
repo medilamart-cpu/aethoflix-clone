@@ -596,9 +596,22 @@ export function VideoJSPlayer({
       setSelectedAudioId(String(audioItem.id));
     }
 
-    if (audioItem?.url && audioItem.url !== activeSrc) {
-      console.log(`[VideoJS] Switching audio stream to ${audioItem.label} (${audioItem.url})`);
-      setActiveSrc(audioItem.url);
+    if (audioItem?.url) {
+      let targetAudioUrl = audioItem.url;
+      if (userSelectedQualityRef.current > 0) {
+        const targetStr = String(userSelectedQualityRef.current);
+        const currentResMatch = targetAudioUrl.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+        const currentRes = currentResMatch ? currentResMatch[1] : null;
+        if (currentRes && currentRes !== targetStr) {
+          targetAudioUrl = targetAudioUrl
+            .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+            .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
+        }
+      }
+      if (targetAudioUrl !== activeSrc) {
+        console.log(`[VideoJS] Switching audio stream to ${audioItem.label} (${targetAudioUrl})`);
+        setActiveSrc(targetAudioUrl);
+      }
     }
     onAudioChange?.(audioItem);
   };
