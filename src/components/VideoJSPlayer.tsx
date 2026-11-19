@@ -464,19 +464,39 @@ export function VideoJSPlayer({
   // Ensure Video.js native Quality and Audio menus have multi-rendition levels to display
   const effectiveSrc = useMemo(() => {
     if (!activeSrc || !isHls) return activeSrc;
-    // Direct stream URLs from language proxy or hls-master should be played directly as-is!
-    if (
-      activeSrc.startsWith("/api/hls-master") ||
-      activeSrc.includes("/api/core/proxy") ||
-      activeSrc.includes("defaultAudio=")
-    ) {
-      return activeSrc;
-    }
 
     // Collect all candidate HLS stream renditions
     let hlsQualities: Array<{ quality: string; url: string }> = [];
 
-    if (Array.isArray(availableQualities)) {
+    // Derive multi-quality URLs from activeSrc (which contains current audio track proxy)
+    const has720 = activeSrc.includes("/720/") || activeSrc.includes("%2F720%2F");
+    const has1080 = activeSrc.includes("/1080/") || activeSrc.includes("%2F1080%2F");
+
+    if (has720) {
+      hlsQualities = [
+        {
+          quality: "1080p",
+          url: activeSrc.replaceAll("%2F720%2F", "%2F1080%2F").replaceAll("/720/", "/1080/"),
+        },
+        { quality: "720p", url: activeSrc },
+        {
+          quality: "480p",
+          url: activeSrc.replaceAll("%2F720%2F", "%2F480%2F").replaceAll("/720/", "/480/"),
+        },
+      ];
+    } else if (has1080) {
+      hlsQualities = [
+        { quality: "1080p", url: activeSrc },
+        {
+          quality: "720p",
+          url: activeSrc.replaceAll("%2F1080%2F", "%2F720%2F").replaceAll("/1080/", "/720/"),
+        },
+        {
+          quality: "480p",
+          url: activeSrc.replaceAll("%2F1080%2F", "%2F480%2F").replaceAll("/1080/", "/480/"),
+        },
+      ];
+    } else if (Array.isArray(availableQualities)) {
       for (const q of availableQualities) {
         if (q && typeof q === "object" && q.url && q.url.includes(".m3u8")) {
           hlsQualities.push({ quality: q.quality || "720p", url: q.url });
@@ -484,32 +504,19 @@ export function VideoJSPlayer({
       }
     }
 
-    // Auto-detect paired resolution for single-level Castle HLS streams (e.g. 720p <-> 480p)
-    if (hlsQualities.length <= 1 && activeSrc.includes("/720/")) {
-      hlsQualities = [
-        { quality: "720p", url: activeSrc },
-        { quality: "480p", url: activeSrc.replace("/720/", "/480/") },
-      ];
-    } else if (hlsQualities.length <= 1 && activeSrc.includes("/1080/")) {
-      hlsQualities = [
-        { quality: "1080p", url: activeSrc },
-        { quality: "720p", url: activeSrc.replace("/1080/", "/720/") },
-        { quality: "480p", url: activeSrc.replace("/1080/", "/480/") },
-      ];
-    }
-
     // Collect all candidate Audio tracks
-    let hlsAudios: Array<{ language: string; label: string; url: string }> = [];
+    let hlsAudios: Array<{ id: string; language: string; label: string; url?: string }> = [];
     if (Array.isArray(availableAudio)) {
-      for (const a of availableAudio) {
-        if (a && typeof a === "object" && a.url) {
+      availableAudio.forEach((a: any, idx: number) => {
+        if (a && typeof a === "object") {
           hlsAudios.push({
+            id: String(idx),
             language: a.language || a.lang || "en",
             label: a.label || a.language || "English",
             url: a.url,
           });
         }
-      }
+      });
     }
 
     const hasMultipleQualities = hlsQualities.length > 1;
@@ -527,9 +534,11 @@ export function VideoJSPlayer({
           if (seenAudios.has(lang)) continue;
           seenAudios.add(lang);
 
-          const isDefault = isFirst || lang === "en";
+          const isSelected =
+            String(a.id) === String(selectedAudioId) ||
+            (!selectedAudioId && (isFirst || lang === "en"));
           lines.push(
-            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
+            `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${a.label}",DEFAULT=${isSelected ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
           );
           isFirst = false;
         }
@@ -579,7 +588,7 @@ export function VideoJSPlayer({
     }
 
     return activeSrc;
-  }, [activeSrc, isHls, availableQualities, availableAudio]);
+  }, [activeSrc, isHls, availableQualities, availableAudio, selectedAudioId]);
 
   useEffect(() => {
     return () => {
