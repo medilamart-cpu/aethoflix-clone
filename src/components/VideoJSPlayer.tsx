@@ -5,7 +5,7 @@ import "@videojs/react/video/skin.css";
 import { VideoPlayer, VideoSkin, Video, usePlayer } from "@videojs/react/video";
 import { useMedia } from "@videojs/react";
 import { HlsJsVideo } from "@videojs/react/media/hlsjs-video";
-import { RotateCcw, Volume2, AudioLines, Check } from "lucide-react";
+import { RotateCcw, Volume2 } from "lucide-react";
 
 export interface QualityItem {
   quality: string;
@@ -52,12 +52,14 @@ function PlayerStateBridge({
   onFirstFrame,
   onError,
   availableAudio,
+  selectedAudioId = "0",
   onAudioChange,
 }: {
   storageKey?: string;
   onFirstFrame?: () => void;
   onError?: (err: any) => void;
   availableAudio?: AudioItem[] | string[] | any;
+  selectedAudioId?: string;
   onAudioChange?: (audio: any) => void;
 }) {
   const store = usePlayer();
@@ -75,6 +77,8 @@ function PlayerStateBridge({
 
   const userSelectedAudioRef = useRef(false);
   const hasAutoSelectedRef = useRef(false);
+  const selectedAudioIdRef = useRef(selectedAudioId);
+  selectedAudioIdRef.current = selectedAudioId;
 
   // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
@@ -136,7 +140,7 @@ function PlayerStateBridge({
     // Helper to auto-select English if default track is foreign (e.g. Hindi track 0)
     // Runs AT MOST ONCE on initial stream launch and NEVER overrides user selection
     const maybeAutoSelectEnglish = () => {
-      if (userSelectedAudioRef.current || hasAutoSelectedRef.current) return;
+      if (userSelectedAudioRef.current || hasAutoSelectedRef.current || selectedAudioIdRef.current !== "0") return;
       const engine = media.engine;
       if (engine && Array.isArray(engine.audioTracks) && engine.audioTracks.length > 1) {
         const engIdx = engine.audioTracks.findIndex((t: any) => {
@@ -158,8 +162,16 @@ function PlayerStateBridge({
       if (populatingAudioRef.current) return;
       if (!media.audioTracks) return;
 
-      // If tracks already present from hls.js or native demuxer, do NOT delete them!
+      const currentTargetId = selectedAudioIdRef.current || "0";
+
+      // If tracks already present from hls.js or native demuxer, synchronize enabled state
       if (media.audioTracks.length > 0) {
+        for (const t of media.audioTracks) {
+          const shouldEnable = t.id === currentTargetId;
+          if (t.enabled !== shouldEnable) {
+            t.enabled = shouldEnable;
+          }
+        }
         maybeAutoSelectEnglish();
         return;
       }
@@ -171,7 +183,7 @@ function PlayerStateBridge({
             const track = media.addAudioTrack(idx === 0 ? "main" : "alternative", item.label, item.language);
             if (track) {
               track.id = item.id;
-              if (idx === 0) track.enabled = true;
+              track.enabled = item.id === currentTargetId;
             }
           }
         });
@@ -199,6 +211,11 @@ function PlayerStateBridge({
         if (selected) {
           userSelectedAudioRef.current = true;
           hasAutoSelectedRef.current = true;
+
+          // If track matches current selection, ignore to prevent re-entrant loops
+          if (selected.id === selectedAudioIdRef.current) {
+            return;
+          }
 
           const selectedLang = (selected.language || "").toLowerCase();
           const selectedLabel = (selected.label || "").toLowerCase();
@@ -263,7 +280,7 @@ function PlayerStateBridge({
       media.removeEventListener?.("canplay", onMediaReady);
       media.audioTracks?.removeEventListener?.("change", onTrackChange);
     };
-  }, [media, normalizedAudios, onAudioChange]);
+  }, [media, normalizedAudios, onAudioChange, selectedAudioId]);
 
   // Format MM:SS helper
   const formatTime = (secs: number) => {
@@ -374,49 +391,32 @@ export function VideoJSPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const savedSeekTimeRef = useRef<number | null>(null);
   const savedPausedRef = useRef<boolean>(false);
-  const [selectedAudioLang, setSelectedAudioLang] = useState<string>("en");
-  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  // Detect initial audio ID if src matches availableAudio or default to English (0)
+  const initialAudioId = useMemo(() => {
+    if (Array.isArray(availableAudio) && availableAudio.length > 0) {
+      const idx = availableAudio.findIndex((a: any) => a?.url === src);
+      if (idx !== -1) return String(idx);
+      const enIdx = availableAudio.findIndex((a: any) => {
+        const l = (a?.language || a?.lang || "").toLowerCase();
+        return l === "en" || l.startsWith("en");
+      });
+      if (enIdx !== -1) return String(enIdx);
+    }
+    return "0";
+  }, [availableAudio, src]);
+
+  const [selectedAudioId, setSelectedAudioId] = useState<string>(initialAudioId);
   const [activeSrc, setActiveSrc] = useState(src);
 
   useEffect(() => {
     setActiveSrc(src);
-  }, [src]);
-
-  // Candidate audio tracks list for dedicated player control
-  const audioTrackList = useMemo(() => {
-    const list: Array<{ id: string; label: string; language: string; url?: string }> = [];
-    if (Array.isArray(availableAudio)) {
-      availableAudio.forEach((item: any, idx: number) => {
-        if (typeof item === "string") {
-          list.push({
-            id: String(idx),
-            label: item.charAt(0).toUpperCase() + item.slice(1),
-            language: item.toLowerCase(),
-          });
-        } else if (item && typeof item === "object") {
-          const lang = (item.language || item.lang || "en").toLowerCase();
-          const label =
-            item.label ||
-            (lang === "en"
-              ? "English (Original)"
-              : lang === "hi"
-                ? "Hindi"
-                : lang === "ta"
-                  ? "Tamil"
-                  : lang === "te"
-                    ? "Telugu"
-                    : lang.toUpperCase());
-          list.push({
-            id: String(idx),
-            label,
-            language: lang,
-            url: item.url,
-          });
-        }
-      });
+    if (Array.isArray(availableAudio) && availableAudio.length > 0) {
+      const idx = availableAudio.findIndex((a: any) => a?.url === src);
+      if (idx !== -1) {
+        setSelectedAudioId(String(idx));
+      }
     }
-    return list;
-  }, [availableAudio]);
+  }, [src, availableAudio]);
 
   const handleAudioSelect = (audioItem: any) => {
     if (!audioItem) return;
@@ -427,9 +427,9 @@ export function VideoJSPlayer({
     savedSeekTimeRef.current = currentTime > 0 ? currentTime : null;
     savedPausedRef.current = wasPaused;
 
-    const lang = (audioItem.language || audioItem.lang || "en").toLowerCase();
-    setSelectedAudioLang(lang);
-    setShowAudioMenu(false);
+    if (audioItem.id !== undefined && audioItem.id !== null) {
+      setSelectedAudioId(String(audioItem.id));
+    }
 
     if (audioItem?.url && audioItem.url !== activeSrc) {
       console.log(`[VideoJS] Switching audio stream to ${audioItem.label} (${audioItem.url})`);
@@ -592,7 +592,6 @@ export function VideoJSPlayer({
   return (
     <div
       ref={containerRef}
-      onClick={() => setShowAudioMenu(false)}
       className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}
     >
       <VideoPlayer poster={poster}>
@@ -601,6 +600,7 @@ export function VideoJSPlayer({
           onFirstFrame={onFirstFrame}
           onError={onError}
           availableAudio={availableAudio}
+          selectedAudioId={selectedAudioId}
           onAudioChange={handleAudioSelect}
         />
         <VideoSkin
@@ -665,55 +665,6 @@ export function VideoJSPlayer({
           )}
         </VideoSkin>
       </VideoPlayer>
-
-      {/* Dedicated Audio Language Selector (TGFLIX Style |||) */}
-      {audioTrackList.length > 1 && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-[16px] right-[100px] z-30"
-        >
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowAudioMenu((prev) => !prev)}
-              title="Audio Language"
-              className="flex items-center justify-center h-8 w-8 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors focus:outline-none"
-            >
-              <AudioLines className="h-5 w-5" />
-            </button>
-
-            {/* Audio Selection Dropdown Menu */}
-            {showAudioMenu && (
-              <div className="absolute bottom-10 right-0 mb-2 w-48 rounded-xl bg-[#0c0c0e]/95 border border-white/15 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 border-b border-white/10 mb-1">
-                  Audio Language
-                </div>
-                <div className="space-y-0.5">
-                  {audioTrackList.map((track) => {
-                    const isSelected =
-                      selectedAudioLang === track.language ||
-                      (selectedAudioLang === "en" && track.language.startsWith("en"));
-                    return (
-                      <button
-                        key={track.id || track.language}
-                        type="button"
-                        onClick={() => handleAudioSelect(track)}
-                        className={`flex items-center justify-between w-full rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${isSelected
-                            ? "bg-red-600/20 text-white font-semibold"
-                            : "text-neutral-300 hover:bg-white/10 hover:text-white"
-                          }`}
-                      >
-                        <span>{track.label}</span>
-                        {isSelected && <Check className="h-3.5 w-3.5 text-red-500" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
