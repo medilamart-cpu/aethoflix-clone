@@ -664,6 +664,9 @@ export function VideoPlayer({
               onAudioChange={(audioItem) => {
                 console.log("[VideoPlayer] Audio track switched:", audioItem?.label);
               }}
+              onQualityChange={(qualityItem) => {
+                console.log("[VideoPlayer] Quality switched:", qualityItem?.id || "Auto");
+              }}
             />
           );
         })()}

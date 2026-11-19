@@ -38,6 +38,7 @@ export interface VideoJSPlayerProps {
   availableAudio?: AudioItem[] | string[] | any;
   availableQualities?: QualityItem[] | string[] | any;
   onAudioChange?: (audio: any) => void;
+  onQualityChange?: (quality: any) => void;
   onReady?: (player: any) => void;
   onError?: (error: any) => void;
   onFirstFrame?: () => void;
@@ -219,6 +220,12 @@ function PlayerStateBridge({
         const matchIdx = currentTargetHeight > 0 ? rends.findIndex((r: any) => r.height === currentTargetHeight) : -1;
         if (media.videoRenditions.selectedIndex !== matchIdx) {
           media.videoRenditions.selectedIndex = matchIdx;
+        } else {
+          rends.forEach((r: any, i: number) => {
+            r.selected = i === matchIdx;
+            r.active = matchIdx === -1 ? i === 0 : i === matchIdx;
+          });
+          media.videoRenditions.dispatchEvent(new Event("change"));
         }
         return;
       }
@@ -236,19 +243,9 @@ function PlayerStateBridge({
           url?: string;
         }> = [];
 
-        const seenHeights = new Set<number>();
-        const filteredQualities = (Array.isArray(availableQualities) ? availableQualities : [])
-          .filter((q: any) => {
-            const label = (typeof q === "string" ? q : (q?.quality || "")).toLowerCase();
-            return label && !label.includes("auto");
-          });
-
-        filteredQualities.forEach((q: any) => {
-          const label = typeof q === "string" ? q : (q.quality || "720p");
-          const h = parseInt(label) || 720;
-          if (seenHeights.has(h)) return;
-          seenHeights.add(h);
-
+        // Guarantee distinct standard multi-resolutions with exact 16:9 specs to prevent duplicate badge formatting
+        const targetHeights = [1080, 720, 480];
+        targetHeights.forEach((h) => {
           const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
           const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
           renditions.push({
@@ -258,25 +255,7 @@ function PlayerStateBridge({
             bitrate: b,
             selected: false,
             active: false,
-            url: typeof q === "object" ? q.url : undefined,
           });
-        });
-
-        // Always guarantee standard multi-resolutions if not present
-        [1080, 720, 480].forEach((h) => {
-          if (!seenHeights.has(h)) {
-            seenHeights.add(h);
-            const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
-            const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
-            renditions.push({
-              id: `${h}p`,
-              width: w,
-              height: h,
-              bitrate: b,
-              selected: false,
-              active: false,
-            });
-          }
         });
 
         // Sort descending: 1080p, 720p, 480p
@@ -555,6 +534,7 @@ export function VideoJSPlayer({
   availableQualities,
   storageKey,
   onAudioChange,
+  onQualityChange,
   onError,
   onFirstFrame,
 }: VideoJSPlayerProps) {
@@ -577,9 +557,24 @@ export function VideoJSPlayer({
 
   const [selectedAudioId, setSelectedAudioId] = useState<string>(initialAudioId);
   const [activeSrc, setActiveSrc] = useState(src);
+  const userSelectedQualityRef = useRef<number>(-1);
 
   useEffect(() => {
-    setActiveSrc(src);
+    if (userSelectedQualityRef.current <= 0) {
+      setActiveSrc(src);
+    } else {
+      const targetStr = String(userSelectedQualityRef.current);
+      const currentResMatch = src.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+      const currentRes = currentResMatch ? currentResMatch[1] : null;
+      let targetUrl = src;
+      if (currentRes && currentRes !== targetStr) {
+        targetUrl = src
+          .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+          .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
+      }
+      setActiveSrc(targetUrl);
+    }
+
     if (Array.isArray(availableAudio) && availableAudio.length > 0) {
       const idx = availableAudio.findIndex((a: any) => a?.url === src);
       if (idx !== -1) {
@@ -609,7 +604,6 @@ export function VideoJSPlayer({
   };
 
   const handleQualitySelect = (qualityItem: any) => {
-    if (!qualityItem) return;
     const videoEl = containerRef.current?.querySelector("video");
     const currentTime = videoEl?.currentTime || 0;
     const wasPaused = videoEl?.paused ?? false;
@@ -617,16 +611,23 @@ export function VideoJSPlayer({
     savedSeekTimeRef.current = currentTime > 0 ? currentTime : null;
     savedPausedRef.current = wasPaused;
 
+    if (!qualityItem) {
+      // Auto selected
+      userSelectedQualityRef.current = -1;
+      return;
+    }
+
     const targetHeight = qualityItem.height || parseInt(qualityItem.id) || 720;
+    userSelectedQualityRef.current = targetHeight;
     const targetStr = String(targetHeight);
 
+    const currentResMatch = activeSrc.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+    const currentRes = currentResMatch ? currentResMatch[1] : null;
     let targetUrl = activeSrc;
-    if (activeSrc.includes("/720/") || activeSrc.includes("%2F720%2F")) {
-      targetUrl = activeSrc.replaceAll("%2F720%2F", `%2F${targetStr}%2F`).replaceAll("/720/", `/${targetStr}/`);
-    } else if (activeSrc.includes("/1080/") || activeSrc.includes("%2F1080%2F")) {
-      targetUrl = activeSrc.replaceAll("%2F1080%2F", `%2F${targetStr}%2F`).replaceAll("/1080/", `/${targetStr}/`);
-    } else if (activeSrc.includes("/480/") || activeSrc.includes("%2F480%2F")) {
-      targetUrl = activeSrc.replaceAll("%2F480%2F", `%2F${targetStr}%2F`).replaceAll("/480/", `/${targetStr}/`);
+    if (currentRes && currentRes !== targetStr) {
+      targetUrl = activeSrc
+        .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+        .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
     } else if (qualityItem.url && qualityItem.url.startsWith("http")) {
       targetUrl = qualityItem.url;
     }
@@ -635,6 +636,7 @@ export function VideoJSPlayer({
       console.log(`[VideoJS] Switching quality stream to ${targetHeight}p (${targetUrl})`);
       setActiveSrc(targetUrl);
     }
+    onQualityChange?.(qualityItem);
   };
 
   const handleMediaReady = () => {
