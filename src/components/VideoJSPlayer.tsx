@@ -49,6 +49,7 @@ export interface VideoJSPlayerProps {
  * Handles resume timestamp, progress saving, first-frame callback, and native playback tracking
  */
 function PlayerStateBridge({
+  activeSrc,
   storageKey,
   onFirstFrame,
   onError,
@@ -57,8 +58,8 @@ function PlayerStateBridge({
   selectedAudioId = "0",
   onAudioChange,
   onQualityChange,
-  userSelectedQualityRef,
 }: {
+  activeSrc?: string;
   storageKey?: string;
   onFirstFrame?: () => void;
   onError?: (err: any) => void;
@@ -67,7 +68,6 @@ function PlayerStateBridge({
   selectedAudioId?: string;
   onAudioChange?: (audio: any) => void;
   onQualityChange?: (quality: any) => void;
-  userSelectedQualityRef: React.MutableRefObject<number>;
 }) {
   const store = usePlayer();
   const media = useMedia() as any;
@@ -88,7 +88,7 @@ function PlayerStateBridge({
   const hasAutoSelectedRef = useRef(false);
   const selectedAudioIdRef = useRef(selectedAudioId);
   selectedAudioIdRef.current = selectedAudioId;
-  // userSelectedQualityRef is passed from parent — it persists across re-renders of this component
+  const selectedQualityHeightRef = useRef<number>(-1);
 
   // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
@@ -130,22 +130,43 @@ function PlayerStateBridge({
       });
     }
 
-    // Always ensure at least 2 tracks so AudioTrackMenu is never hidden by AudioTrackRadioGroupCore
-    if (list.length <= 1) {
-      const primary = list[0]?.label || "English (Original)";
-      list.length = 0;
-      list.push(
-        { id: "0", label: primary, language: "en" },
-        { id: "1", label: "Multi-Audio / Stereo", language: "mul" }
-      );
+    // Deduplicate audio candidate list strictly by language code and label
+    const seen = new Set<string>();
+    const deduplicated: typeof list = [];
+    for (const item of list) {
+      const key = `${item.language.toLowerCase()}-${item.label.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push({ ...item, id: String(deduplicated.length) });
+      }
     }
 
-    return list;
+    // Show only those languages which are actually available! Never inject fake tracks.
+    if (deduplicated.length === 0) {
+      deduplicated.push({ id: "0", label: "English", language: "en" });
+    }
+
+    return deduplicated;
   }, [availableAudio]);
 
   // Sync and manage audio tracks & video renditions with Video.js Settings menu
   useEffect(() => {
     if (!media) return;
+
+    // Attach Hls.js network and media error auto-recovery
+    if (media.engine && typeof media.engine.on === "function") {
+      const onHlsError = (_e: any, data: any) => {
+        if (data?.fatal) {
+          console.warn("[VideoJS] Recovering Hls.js fatal error:", data.type, data.details);
+          if (data.type === "networkError") {
+            media.engine.startLoad();
+          } else if (data.type === "mediaError") {
+            media.engine.recoverMediaError();
+          }
+        }
+      };
+      media.engine.on("hlsError", onHlsError);
+    }
 
     const populateAudioTracks = () => {
       if (populatingAudioRef.current || !media) return;
@@ -169,6 +190,7 @@ function PlayerStateBridge({
             id: item.id,
             label: item.label,
             language: item.language,
+            url: item.url,
             kind: idx === 0 ? "main" : "alternative",
             _enabled: item.id === currentTargetId,
             get enabled() {
@@ -177,6 +199,12 @@ function PlayerStateBridge({
             set enabled(val: boolean) {
               if (this._enabled !== val) {
                 this._enabled = val;
+                if (val) {
+                  // Disable sibling tracks when one track is enabled
+                  tracks.forEach((other) => {
+                    if (other !== this) other._enabled = false;
+                  });
+                }
                 trackListTarget.dispatchEvent(new Event("change"));
               }
             },
@@ -214,20 +242,26 @@ function PlayerStateBridge({
     const populateVideoRenditions = () => {
       if (populatingRenditionsRef.current || !media) return;
 
-      // Always use the shared ref from the outer component — survives re-renders
-      const currentTargetHeight = userSelectedQualityRef.current > 0 ? userSelectedQualityRef.current : 1080;
+      const currentTargetHeight = selectedQualityHeightRef.current;
 
-      // If media already has custom renditions, update selected state in place (don't rebuild)
+      // If media already has native multi-level renditions from HLS manifest, let native HlsJsMediaTracks handle it!
+      if (media.videoRenditions && !(media.videoRenditions as any)._isCustom && media.videoRenditions.length > 1) {
+        return;
+      }
+
+      // If media already has custom renditions, update selected state in place
       if (media.videoRenditions && (media.videoRenditions as any)._isCustom) {
         const rends = [...media.videoRenditions];
-        const matchIdx = rends.findIndex((r: any) => r.height === currentTargetHeight);
-        const effectiveIdx = matchIdx !== -1 ? matchIdx : 0;
-        rends.forEach((r: any, i: number) => {
-          r.selected = i === effectiveIdx;
-          r.active = i === effectiveIdx;
-        });
-        (media.videoRenditions as any)._setSelectedIndexQuiet?.(effectiveIdx);
-        media.videoRenditions.dispatchEvent(new Event("change"));
+        const matchIdx = currentTargetHeight > 0 ? rends.findIndex((r: any) => r.height === currentTargetHeight) : -1;
+        if (media.videoRenditions.selectedIndex !== matchIdx) {
+          media.videoRenditions.selectedIndex = matchIdx;
+        } else {
+          rends.forEach((r: any, i: number) => {
+            r.selected = i === matchIdx;
+            r.active = matchIdx === -1 ? i === 0 : i === matchIdx;
+          });
+          media.videoRenditions.dispatchEvent(new Event("change"));
+        }
         return;
       }
 
@@ -244,121 +278,78 @@ function PlayerStateBridge({
           url?: string;
         }> = [];
 
-        // Check if explicit qualities are provided via props
-        if (Array.isArray(availableQualities) && availableQualities.length > 0 && typeof availableQualities[0] === "object") {
-          availableQualities.forEach((q: any) => {
-            const h = Number(q.height) || Number(q.quality?.replace(/p$/i, "")) || 0;
-            if (!h) return;
-            renditions.push({
-              id: `${h}p`,
-              width: h >= 1080 ? 1920 : h >= 720 ? 1280 : 854,
-              height: h,
-              bitrate: q.bitrate || (h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000),
-              selected: false,
-              active: false,
-              url: q.url,
+        // Guarantee distinct standard multi-resolutions with exact 16:9 specs to prevent duplicate badge formatting
+        const targetHeights = [1080, 720, 480];
+        targetHeights.forEach((h) => {
+          const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
+          const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
+          let qUrl = "";
+          if (Array.isArray(availableQualities)) {
+            const found = availableQualities.find((q: any) => {
+              const str = typeof q === "string" ? q : q?.quality || "";
+              return str.includes(String(h));
             });
+            if (found && typeof found === "object" && found.url) qUrl = found.url;
+          }
+          if (!qUrl && activeSrc) {
+            qUrl = activeSrc
+              .replaceAll("%2F720%2F", `%2F${h}%2F`).replaceAll("/720/", `/${h}/`)
+              .replaceAll("%2F1080%2F", `%2F${h}%2F`).replaceAll("/1080/", `/${h}/`)
+              .replaceAll("%2F480%2F", `%2F${h}%2F`).replaceAll("/480/", `/${h}/`);
+          }
+          renditions.push({
+            id: `${h}p`,
+            width: w,
+            height: h,
+            bitrate: b,
+            url: qUrl,
+            selected: false,
+            active: false,
           });
-        }
-
-        // Fallback to standard 1080/720/480 if list is empty
-        if (renditions.length === 0) {
-          const targetHeights = [1080, 720, 480];
-          targetHeights.forEach((h) => {
-            const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
-            const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
-            renditions.push({
-              id: `${h}p`,
-              width: w,
-              height: h,
-              bitrate: b,
-              selected: false,
-              active: false,
-            });
-          });
-        }
+        });
 
         // Sort descending: 1080p, 720p, 480p
         renditions.sort((a, b) => b.height - a.height);
 
-        let selectedIdx = renditions.findIndex(r => r.height === currentTargetHeight);
-        if (selectedIdx === -1 && renditions.length > 0) {
-          selectedIdx = 0; // Default to highest (1080p)
-        }
+        let selectedIdx = currentTargetHeight > 0
+          ? renditions.findIndex(r => r.height === currentTargetHeight)
+          : -1;
 
         renditions.forEach((r, i) => {
           r.selected = i === selectedIdx;
-          r.active = i === selectedIdx;
+          r.active = selectedIdx === -1 ? i === 0 : i === selectedIdx;
         });
 
         const customRenditions = Object.assign(renditionListTarget, {
           _isCustom: true,
           length: renditions.length,
-          _setSelectedIndexQuiet(val: number) {
-            selectedIdx = val;
-            renditions.forEach((r, i) => {
-              r.selected = i === val;
-              r.active = val === -1 ? i === 0 : i === val;
-            });
-          },
           get selectedIndex() {
             return selectedIdx;
           },
           set selectedIndex(val: number) {
-            if (val === selectedIdx) return;
             selectedIdx = val;
             const chosen = val >= 0 ? renditions[val] : null;
-            // Write back to the shared outer ref so it survives re-renders
-            userSelectedQualityRef.current = chosen ? chosen.height : -1;
+            selectedQualityHeightRef.current = chosen ? chosen.height : -1;
 
             renditions.forEach((r, i) => {
               r.selected = i === val;
               r.active = val === -1 ? i === 0 : i === val;
             });
 
-            let handledByHls = false;
-            if (media.engine) {
+            if (media.engine && Array.isArray(media.engine.levels) && media.engine.levels.length > 1) {
               try {
-                if (media.engine.config) {
-                  media.engine.config.capLevelToPlayerSize = false;
-                }
-                if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
-                  try { (media as any).capRenditionToPlayerSize = false; } catch {}
-                }
-
                 if (val === -1) {
                   media.engine.currentLevel = -1;
-                  media.engine.nextLevel = -1;
-                  handledByHls = true;
                 } else if (chosen) {
-                  const targetHeight = chosen.height;
-                  if (Array.isArray(media.engine.levels) && media.engine.levels.length > 1) {
-                    let bestIdx = -1;
-                    let minDiff = 999999;
-                    media.engine.levels.forEach((lvl: any, idx: number) => {
-                      const h = Number(lvl?.height || 0);
-                      if (h > 0) {
-                        const diff = Math.abs(h - targetHeight);
-                        if (diff < minDiff) {
-                          minDiff = diff;
-                          bestIdx = idx;
-                        }
-                      }
-                    });
-                    if (bestIdx >= 0) {
-                      media.engine.currentLevel = bestIdx;
-                      media.engine.nextLevel = bestIdx;
-                      media.engine.loadLevel = bestIdx;
-                      handledByHls = true;
-                    }
-                  } else if (typeof media.engine.currentLevel !== "undefined" && media.engine.levels?.length > 1) {
-                    media.engine.currentLevel = val;
-                    handledByHls = true;
+                  const targetH = chosen.height;
+                  const lvlIdx = media.engine.levels.findIndex(
+                    (l: any) => l.height === targetH || Math.abs((l.height || 0) - targetH) <= 50
+                  );
+                  if (lvlIdx !== -1) {
+                    media.engine.currentLevel = lvlIdx;
                   }
                 }
-              } catch (err) {
-                console.warn("[VideoJS] Error setting engine quality level:", err);
-              }
+              } catch {}
             }
 
             if (chosen) {
@@ -366,7 +357,7 @@ function PlayerStateBridge({
               setTimeout(() => setQualityNotice(null), 3000);
             }
 
-            if (chosen && onQualityChange && !handledByHls) {
+            if (onQualityChange) {
               onQualityChange(chosen);
             }
 
@@ -390,26 +381,6 @@ function PlayerStateBridge({
           configurable: true,
         });
 
-        // Apply initial engine quality level if engine already has levels
-        if (media.engine && selectedIdx >= 0) {
-          try {
-            if (media.engine.config) {
-              media.engine.config.capLevelToPlayerSize = false;
-            }
-            if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
-              try { (media as any).capRenditionToPlayerSize = false; } catch {}
-            }
-            const targetHeight = renditions[selectedIdx]?.height || 1080;
-            if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
-              const levelIdx = media.engine.levels.findIndex((lvl: any) => lvl.height === targetHeight);
-              if (levelIdx !== -1) {
-                media.engine.currentLevel = levelIdx;
-                media.engine.nextLevel = levelIdx;
-              }
-            }
-          } catch {}
-        }
-
         customRenditions.dispatchEvent(new Event("change"));
       } catch (err) {
         console.warn("[VideoJS] Error populating video renditions:", err);
@@ -425,25 +396,6 @@ function PlayerStateBridge({
     const onMediaReady = () => {
       populateAudioTracks();
       populateVideoRenditions();
-
-      if (media?.engine) {
-        try {
-          if (media.engine.config) {
-            media.engine.config.capLevelToPlayerSize = false;
-          }
-          if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
-            try { (media as any).capRenditionToPlayerSize = false; } catch {}
-          }
-          if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
-            const targetH = userSelectedQualityRef.current > 0 ? userSelectedQualityRef.current : 1080;
-            const levelIdx = media.engine.levels.findIndex((lvl: any) => lvl.height === targetH);
-            if (levelIdx !== -1 && media.engine.currentLevel !== levelIdx) {
-              media.engine.currentLevel = levelIdx;
-              media.engine.nextLevel = levelIdx;
-            }
-          }
-        } catch {}
-      }
     };
 
     media.addEventListener?.("loadstart", onMediaReady);
@@ -665,21 +617,20 @@ export function VideoJSPlayer({
 
   const [selectedAudioId, setSelectedAudioId] = useState<string>(initialAudioId);
   const [activeSrc, setActiveSrc] = useState(src);
-  const userSelectedQualityRef = useRef<number>(1080);
+  const userSelectedQualityRef = useRef<number>(-1);
 
   useEffect(() => {
     if (userSelectedQualityRef.current <= 0) {
       setActiveSrc(src);
     } else {
+      const targetStr = String(userSelectedQualityRef.current);
+      const currentResMatch = src.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+      const currentRes = currentResMatch ? currentResMatch[1] : null;
       let targetUrl = src;
-      if (Array.isArray(availableQualities)) {
-        const match = availableQualities.find((q: any) => {
-          const h = Number(q.height) || Number(q.quality?.replace(/[^0-9]/g, "")) || 0;
-          return h === userSelectedQualityRef.current;
-        });
-        if (match?.url && match.url.startsWith("http")) {
-          targetUrl = match.url;
-        }
+      if (currentRes && currentRes !== targetStr) {
+        targetUrl = src
+          .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+          .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
       }
       setActiveSrc(targetUrl);
     }
@@ -690,7 +641,7 @@ export function VideoJSPlayer({
         setSelectedAudioId(String(idx));
       }
     }
-  }, [src, availableAudio, availableQualities]);
+  }, [src, availableAudio]);
 
   const handleAudioSelect = (audioItem: any) => {
     if (!audioItem) return;
@@ -705,8 +656,8 @@ export function VideoJSPlayer({
       setSelectedAudioId(String(audioItem.id));
     }
 
+    let targetAudioUrl = audioItem.url;
     if (audioItem?.url) {
-      let targetAudioUrl = audioItem.url;
       if (userSelectedQualityRef.current > 0) {
         const targetStr = String(userSelectedQualityRef.current);
         const currentResMatch = targetAudioUrl.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
@@ -722,7 +673,7 @@ export function VideoJSPlayer({
         setActiveSrc(targetAudioUrl);
       }
     }
-    onAudioChange?.(audioItem);
+    onAudioChange?.({ ...audioItem, url: targetAudioUrl || audioItem.url });
   };
 
   const handleQualitySelect = (qualityItem: any) => {
@@ -736,39 +687,34 @@ export function VideoJSPlayer({
     if (!qualityItem) {
       // Auto selected
       userSelectedQualityRef.current = -1;
-      setActiveSrc(src);
       onQualityChange?.(null);
       return;
     }
 
     const targetHeight = qualityItem.height || parseInt(qualityItem.id) || 720;
     userSelectedQualityRef.current = targetHeight;
+    const targetStr = String(targetHeight);
 
-    let targetUrl = qualityItem.url;
-    if (!targetUrl && Array.isArray(availableQualities)) {
-      const match = availableQualities.find((q: any) => {
-        const h = Number(q.height) || Number(q.quality?.replace(/[^0-9]/g, "")) || 0;
-        return h === targetHeight;
-      });
-      if (match?.url) targetUrl = match.url;
+    // If stream is a multi-variant master HLS (/api/hls-master), Hls.js switches quality in-stream natively
+    if (activeSrc.includes("/api/hls-master")) {
+      onQualityChange?.(qualityItem);
+      return;
     }
 
-    if (!targetUrl) {
-      const targetStr = String(targetHeight);
-      const currentResMatch = activeSrc.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
-      const currentRes = currentResMatch ? currentResMatch[1] : null;
-      if (currentRes && currentRes !== targetStr) {
-        targetUrl = activeSrc
-          .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
-          .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
-      }
+    let targetUrl = qualityItem.url || activeSrc;
+    const currentResMatch = activeSrc.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+    const currentRes = currentResMatch ? currentResMatch[1] : null;
+    if (currentRes && currentRes !== targetStr) {
+      targetUrl = activeSrc
+        .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+        .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
     }
 
     if (targetUrl && targetUrl !== activeSrc) {
       console.log(`[VideoJS] Switching quality stream to ${targetHeight}p (${targetUrl})`);
       setActiveSrc(targetUrl);
     }
-    onQualityChange?.(qualityItem);
+    onQualityChange?.({ ...qualityItem, url: targetUrl });
   };
 
   const handleMediaReady = () => {
@@ -799,8 +745,15 @@ export function VideoJSPlayer({
       ref={containerRef}
       className={`relative w-full h-full bg-black overflow-hidden select-none ${className}`}
     >
+      <style jsx global>{`
+        .video-js .vjs-error-display,
+        .vjs-error-display {
+          display: none !important;
+        }
+      `}</style>
       <VideoPlayer poster={poster}>
         <PlayerStateBridge
+          activeSrc={activeSrc}
           storageKey={storageKey}
           onFirstFrame={onFirstFrame}
           onError={onError}
@@ -809,7 +762,6 @@ export function VideoJSPlayer({
           selectedAudioId={selectedAudioId}
           onAudioChange={handleAudioSelect}
           onQualityChange={handleQualitySelect}
-          userSelectedQualityRef={userSelectedQualityRef}
         />
         <VideoSkin
           style={
@@ -831,7 +783,6 @@ export function VideoJSPlayer({
               src={activeSrc}
               playsInline
               preload="auto"
-              crossOrigin="anonymous"
               autoPlay={autoplay}
               onLoadedData={handleMediaReady}
               onCanPlay={handleMediaReady}
@@ -853,7 +804,6 @@ export function VideoJSPlayer({
               src={activeSrc}
               playsInline
               preload="auto"
-              crossOrigin="anonymous"
               autoPlay={autoplay}
               onLoadedData={handleMediaReady}
               onCanPlay={handleMediaReady}

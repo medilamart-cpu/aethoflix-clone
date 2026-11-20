@@ -13,6 +13,17 @@ interface AudioTrack {
   url: string;
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
+  });
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const dataParam = searchParams.get("data");
@@ -37,15 +48,26 @@ export async function GET(req: NextRequest) {
 
     const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
 
-    // Filter to valid m3u8 streams, skip "Auto" label, sort descending (1080p, 720p, 480p, 360p)
+    // Filter to valid direct CDN m3u8 streams, skip "Auto" label, remove worker shard URLs
     const validQualities = qualities.filter(
-      (q) => q && q.url && q.url.startsWith("http") && q.quality?.toLowerCase() !== "auto"
+      (q) => q && q.url && q.url.startsWith("http") && q.quality?.toLowerCase() !== "auto" && !q.url.includes("workers.dev")
     );
     const sortedQualities = [...validQualities].sort((a, b) => {
       const hA = parseInt(a.quality) || 0;
       const hB = parseInt(b.quality) || 0;
       return hB - hA;
     });
+
+    // Strictly deduplicate by resolution height
+    const seenHeights = new Set<number>();
+    const uniqueQualities: StreamQuality[] = [];
+    for (const q of sortedQualities) {
+      const h = parseInt(q.quality) || 720;
+      if (!seenHeights.has(h)) {
+        seenHeights.add(h);
+        uniqueQualities.push(q);
+      }
+    }
 
     // Filter to valid audio tracks
     const validAudios = audios.filter((a) => a && a.url && a.url.startsWith("http"));
@@ -54,7 +76,7 @@ export async function GET(req: NextRequest) {
     if (hasAudios) {
       const seenAudios = new Set<string>();
       for (const a of validAudios) {
-        const lang = a.language || "en";
+        const lang = (a.language || "en").toLowerCase();
         if (seenAudios.has(lang)) continue;
         seenAudios.add(lang);
 
@@ -71,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     const audioAttr = hasAudios ? ',AUDIO="audio"' : "";
 
-    for (const q of sortedQualities) {
+    for (const q of uniqueQualities) {
       const label = q.quality || "720p";
       const height = parseInt(label) || 720;
       let width = 1280;

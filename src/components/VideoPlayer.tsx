@@ -73,6 +73,7 @@ export function VideoPlayer({
   const [isFinalized, setIsFinalized] = useState<boolean>(!!initialCache);
   const [selectedMirror, setSelectedMirror] = useState<string | null>(defaultInitialMirror);
   const [failedDirects, setFailedDirects] = useState<Set<string>>(new Set());
+  const [userAudioUrl, setUserAudioUrl] = useState<string | null>(null);
   const [userQualityUrl, setUserQualityUrl] = useState<string | null>(null);
   const [isSwitching, setIsSwitching] = useState<boolean>(false);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export function VideoPlayer({
   useEffect(() => {
     setDirectStreams([]);
     setFailedDirects(new Set());
+    setUserAudioUrl(null);
     setUserQualityUrl(null);
     setSelectedMirror(defaultInitialMirror);
     setIframeError(false);
@@ -154,17 +156,12 @@ export function VideoPlayer({
         setShowDirectLoader(false);
 
         const availableEmbed = verifiedServersRef.current?.find(
-          (srv) => srv.label && srv.label !== failedLabel && !srv.label.toLowerCase().includes("direct")
+          (srv) => srv.label && srv.label !== failedLabel
         );
-        if (availableEmbed && allMirrors[availableEmbed.label]) {
+        if (availableEmbed) {
           setSelectedMirror(availableEmbed.label);
-        } else if (allMirrors["Multi HD (EmbedWave)"]) {
-          setSelectedMirror("Multi HD (EmbedWave)");
-        } else if (allMirrors["VidLink"]) {
-          setSelectedMirror("VidLink");
         } else {
-          const fallback = Object.keys(allMirrors).find((k) => !k.includes("Direct"));
-          if (fallback) setSelectedMirror(fallback);
+          setSelectedMirror("Multi HD (EmbedWave)");
         }
       }
     };
@@ -658,7 +655,7 @@ export function VideoPlayer({
           return (
             <VideoJSPlayer
               key="vjs-direct-player"
-              src={userQualityUrl || directStreamUrl}
+              src={userAudioUrl || userQualityUrl || directStreamUrl}
               poster={poster}
               subtitles={activeMeta?.subtitles}
               availableAudio={activeMeta?.audioTracks || activeMeta?.audio}
@@ -670,10 +667,17 @@ export function VideoPlayer({
               onFirstFrame={handleFirstFrame}
               onAudioChange={(audioItem) => {
                 console.log("[VideoPlayer] Audio track switched:", audioItem?.label);
+                if (audioItem?.url && audioItem.url.startsWith("http")) {
+                  setUserAudioUrl(audioItem.url);
+                }
               }}
               onQualityChange={(qualityItem) => {
                 console.log("[VideoPlayer] Quality switched:", qualityItem?.id || "Auto");
-                if (qualityItem?.url && qualityItem.url.startsWith("http")) {
+                if (
+                  qualityItem?.url &&
+                  qualityItem.url.startsWith("http") &&
+                  !directStreamUrl.includes("/api/hls-master")
+                ) {
                   setUserQualityUrl(qualityItem.url);
                 }
               }}
