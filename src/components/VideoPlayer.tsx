@@ -73,6 +73,7 @@ export function VideoPlayer({
   const [isFinalized, setIsFinalized] = useState<boolean>(!!initialCache);
   const [selectedMirror, setSelectedMirror] = useState<string | null>(defaultInitialMirror);
   const [failedDirects, setFailedDirects] = useState<Set<string>>(new Set());
+  const [userQualityUrl, setUserQualityUrl] = useState<string | null>(null);
   const [isSwitching, setIsSwitching] = useState<boolean>(false);
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null);
   const [isDirectLoading, setIsDirectLoading] = useState<boolean>(true);
@@ -97,6 +98,7 @@ export function VideoPlayer({
   useEffect(() => {
     setDirectStreams([]);
     setFailedDirects(new Set());
+    setUserQualityUrl(null);
     setSelectedMirror(defaultInitialMirror);
     setIframeError(false);
     setIsDirectLoading(true);
@@ -152,12 +154,17 @@ export function VideoPlayer({
         setShowDirectLoader(false);
 
         const availableEmbed = verifiedServersRef.current?.find(
-          (srv) => srv.label && srv.label !== failedLabel
+          (srv) => srv.label && srv.label !== failedLabel && !srv.label.toLowerCase().includes("direct")
         );
-        if (availableEmbed) {
+        if (availableEmbed && allMirrors[availableEmbed.label]) {
           setSelectedMirror(availableEmbed.label);
-        } else {
+        } else if (allMirrors["Multi HD (EmbedWave)"]) {
           setSelectedMirror("Multi HD (EmbedWave)");
+        } else if (allMirrors["VidLink"]) {
+          setSelectedMirror("VidLink");
+        } else {
+          const fallback = Object.keys(allMirrors).find((k) => !k.includes("Direct"));
+          if (fallback) setSelectedMirror(fallback);
         }
       }
     };
@@ -651,7 +658,7 @@ export function VideoPlayer({
           return (
             <VideoJSPlayer
               key="vjs-direct-player"
-              src={directStreamUrl}
+              src={userQualityUrl || directStreamUrl}
               poster={poster}
               subtitles={activeMeta?.subtitles}
               availableAudio={activeMeta?.audioTracks || activeMeta?.audio}
@@ -666,6 +673,9 @@ export function VideoPlayer({
               }}
               onQualityChange={(qualityItem) => {
                 console.log("[VideoPlayer] Quality switched:", qualityItem?.id || "Auto");
+                if (qualityItem?.url && qualityItem.url.startsWith("http")) {
+                  setUserQualityUrl(qualityItem.url);
+                }
               }}
             />
           );

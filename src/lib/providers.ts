@@ -70,11 +70,13 @@ export const STREAMING_PROVIDERS: StreamingProvider[] = [
   {
     label: "Server 1",
     provider: "VidSync Direct",
-    base_url: "https://tgvid.lovable.app",
+    base_url: "https://vidsync.pro",
     supports_movie: true,
     supports_tv: true,
     supports_anime: false,
     sandbox_compatible: true,
+    build_movie: (id) => `https://vidsync.pro/embed/movie/${id}`,
+    build_tv: (id, s, e) => `https://vidsync.pro/embed/tv/${id}/${s}/${e}`,
   },
   {
     label: "Server 2",

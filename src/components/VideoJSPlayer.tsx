@@ -222,15 +222,12 @@ function PlayerStateBridge({
         const rends = [...media.videoRenditions];
         const matchIdx = rends.findIndex((r: any) => r.height === currentTargetHeight);
         const effectiveIdx = matchIdx !== -1 ? matchIdx : 0;
-        if (media.videoRenditions.selectedIndex !== effectiveIdx) {
-          media.videoRenditions.selectedIndex = effectiveIdx;
-        } else {
-          rends.forEach((r: any, i: number) => {
-            r.selected = i === effectiveIdx;
-            r.active = i === effectiveIdx;
-          });
-          media.videoRenditions.dispatchEvent(new Event("change"));
-        }
+        rends.forEach((r: any, i: number) => {
+          r.selected = i === effectiveIdx;
+          r.active = i === effectiveIdx;
+        });
+        (media.videoRenditions as any)._setSelectedIndexQuiet?.(effectiveIdx);
+        media.videoRenditions.dispatchEvent(new Event("change"));
         return;
       }
 
@@ -297,20 +294,29 @@ function PlayerStateBridge({
         const customRenditions = Object.assign(renditionListTarget, {
           _isCustom: true,
           length: renditions.length,
+          _setSelectedIndexQuiet(val: number) {
+            selectedIdx = val;
+            renditions.forEach((r, i) => {
+              r.selected = i === val;
+              r.active = val === -1 ? i === 0 : i === val;
+            });
+          },
           get selectedIndex() {
             return selectedIdx;
           },
           set selectedIndex(val: number) {
+            if (val === selectedIdx) return;
             selectedIdx = val;
             const chosen = val >= 0 ? renditions[val] : null;
             // Write back to the shared outer ref so it survives re-renders
-            userSelectedQualityRef.current = chosen ? chosen.height : 1080;
+            userSelectedQualityRef.current = chosen ? chosen.height : -1;
 
             renditions.forEach((r, i) => {
               r.selected = i === val;
               r.active = val === -1 ? i === 0 : i === val;
             });
 
+            let handledByHls = false;
             if (media.engine) {
               try {
                 if (media.engine.config) {
@@ -323,25 +329,31 @@ function PlayerStateBridge({
                 if (val === -1) {
                   media.engine.currentLevel = -1;
                   media.engine.nextLevel = -1;
+                  handledByHls = true;
                 } else if (chosen) {
                   const targetHeight = chosen.height;
-                  if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
-                    const levelIdx = media.engine.levels.findIndex(
-                      (lvl: any) => lvl.height === targetHeight
-                    );
-                    if (levelIdx !== -1) {
-                      media.engine.currentLevel = levelIdx;
-                      media.engine.nextLevel = levelIdx;
-                      media.engine.loadLevel = levelIdx;
-                    } else {
-                      const isAscending = media.engine.levels.length > 1 &&
-                        media.engine.levels[0].height < media.engine.levels[media.engine.levels.length - 1].height;
-                      const mappedIdx = isAscending ? (media.engine.levels.length - 1 - val) : val;
-                      media.engine.currentLevel = mappedIdx;
-                      media.engine.nextLevel = mappedIdx;
+                  if (Array.isArray(media.engine.levels) && media.engine.levels.length > 1) {
+                    let bestIdx = -1;
+                    let minDiff = 999999;
+                    media.engine.levels.forEach((lvl: any, idx: number) => {
+                      const h = Number(lvl?.height || 0);
+                      if (h > 0) {
+                        const diff = Math.abs(h - targetHeight);
+                        if (diff < minDiff) {
+                          minDiff = diff;
+                          bestIdx = idx;
+                        }
+                      }
+                    });
+                    if (bestIdx >= 0) {
+                      media.engine.currentLevel = bestIdx;
+                      media.engine.nextLevel = bestIdx;
+                      media.engine.loadLevel = bestIdx;
+                      handledByHls = true;
                     }
-                  } else if (typeof media.engine.currentLevel !== "undefined") {
+                  } else if (typeof media.engine.currentLevel !== "undefined" && media.engine.levels?.length > 1) {
                     media.engine.currentLevel = val;
+                    handledByHls = true;
                   }
                 }
               } catch (err) {
@@ -354,7 +366,7 @@ function PlayerStateBridge({
               setTimeout(() => setQualityNotice(null), 3000);
             }
 
-            if (chosen && onQualityChange) {
+            if (chosen && onQualityChange && !handledByHls) {
               onQualityChange(chosen);
             }
 
@@ -659,14 +671,15 @@ export function VideoJSPlayer({
     if (userSelectedQualityRef.current <= 0) {
       setActiveSrc(src);
     } else {
-      const targetStr = String(userSelectedQualityRef.current);
-      const currentResMatch = src.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
-      const currentRes = currentResMatch ? currentResMatch[1] : null;
       let targetUrl = src;
-      if (currentRes && currentRes !== targetStr) {
-        targetUrl = src
-          .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
-          .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
+      if (Array.isArray(availableQualities)) {
+        const match = availableQualities.find((q: any) => {
+          const h = Number(q.height) || Number(q.quality?.replace(/[^0-9]/g, "")) || 0;
+          return h === userSelectedQualityRef.current;
+        });
+        if (match?.url && match.url.startsWith("http")) {
+          targetUrl = match.url;
+        }
       }
       setActiveSrc(targetUrl);
     }
@@ -677,7 +690,7 @@ export function VideoJSPlayer({
         setSelectedAudioId(String(idx));
       }
     }
-  }, [src, availableAudio]);
+  }, [src, availableAudio, availableQualities]);
 
   const handleAudioSelect = (audioItem: any) => {
     if (!audioItem) return;
@@ -723,22 +736,32 @@ export function VideoJSPlayer({
     if (!qualityItem) {
       // Auto selected
       userSelectedQualityRef.current = -1;
+      setActiveSrc(src);
+      onQualityChange?.(null);
       return;
     }
 
     const targetHeight = qualityItem.height || parseInt(qualityItem.id) || 720;
     userSelectedQualityRef.current = targetHeight;
-    const targetStr = String(targetHeight);
 
-    const currentResMatch = activeSrc.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
-    const currentRes = currentResMatch ? currentResMatch[1] : null;
-    let targetUrl = activeSrc;
-    if (currentRes && currentRes !== targetStr) {
-      targetUrl = activeSrc
-        .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
-        .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
-    } else if (qualityItem.url && qualityItem.url.startsWith("http")) {
-      targetUrl = qualityItem.url;
+    let targetUrl = qualityItem.url;
+    if (!targetUrl && Array.isArray(availableQualities)) {
+      const match = availableQualities.find((q: any) => {
+        const h = Number(q.height) || Number(q.quality?.replace(/[^0-9]/g, "")) || 0;
+        return h === targetHeight;
+      });
+      if (match?.url) targetUrl = match.url;
+    }
+
+    if (!targetUrl) {
+      const targetStr = String(targetHeight);
+      const currentResMatch = activeSrc.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
+      const currentRes = currentResMatch ? currentResMatch[1] : null;
+      if (currentRes && currentRes !== targetStr) {
+        targetUrl = activeSrc
+          .replaceAll(`%2F${currentRes}%2F`, `%2F${targetStr}%2F`)
+          .replaceAll(`/${currentRes}/`, `/${targetStr}/`);
+      }
     }
 
     if (targetUrl && targetUrl !== activeSrc) {

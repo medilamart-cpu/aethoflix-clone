@@ -72,6 +72,21 @@ const VIDSYNC_WORKER_SHARDS = [
   "https://vidsync-shard.vs-deals80.workers.dev",
 ];
 
+// VidSync primary Cloudflare R2 CDN buckets (0 rate limit data lake)
+const VIDSYNC_R2_CDNS = [
+  "https://r2.vidsync.pro",
+  "https://pub-f88a952ac21143ffb94493f150556669.r2.dev",
+  "https://pub-e9ef31bceae34b4592c33790702a1c9c.r2.dev",
+  "https://pub-21a592d0329f4a6aa26db8c8a7b8110c.r2.dev",
+  "https://pub-167f5a45d5084266a4d027ac45ee4469.r2.dev",
+  "https://pub-b12edb9706224684ac8a82c709a9f7ca.r2.dev",
+  "https://pub-1ff6128748e345e2b87d5c6a7cb86846.r2.dev",
+  "https://pub-fe962ac6c5d1442aa34ab7214b31705d.r2.dev",
+  "https://pub-37718c950637430cb0a7cec535b6fe1e.r2.dev",
+  "https://pub-15393bdb20c94e569ff9e6b643f6665b.r2.dev",
+  "https://pub-9419273a93504a06bc1360c627f7f662.r2.dev",
+];
+
 // FNV-1a hash algorithm matching VidSync client implementation
 function fnv1a(str: string): number {
   let h = 2166136261;
@@ -124,6 +139,14 @@ function extractTitleFromSource(s: VidSyncSource): string | null {
   return null;
 }
 
+function titlesMatch(reqTitle?: string | null, srcTitle?: string | null): boolean {
+  if (!reqTitle || !srcTitle) return true;
+  const a = normalizeTitle(reqTitle);
+  const b = normalizeTitle(srcTitle);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -173,46 +196,88 @@ export async function GET(request: NextRequest) {
     let candidateSources: VidSyncSource[] = [];
     let activeShard = uniqueShards[0];
 
-    // Query VidSync Cloudflare Worker shard cluster
-    for (const shard of uniqueShards) {
-      const queryParams = new URLSearchParams({
-        type,
-        id: tmdbNumericId,
-        season,
-        episode,
-        _t: String(Date.now()),
-      });
-
+    // ── 1. Primary Direct CDN: VidSync Cloudflare R2 Data Lake (0 rate limit) ──
+    let resolvedType = type;
+    const r2Path = `v5/${type}/${tmdbNumericId}/${season}_${episode}.json`;
+    for (const r2Cdn of VIDSYNC_R2_CDNS) {
       try {
-        const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
-          headers: {
-            Origin: "https://vidsync.pro",
-            Referer: "https://vidsync.pro/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          signal: AbortSignal.timeout(4000),
+        const r2Res = await fetch(`${r2Cdn}/${r2Path}`, {
+          signal: AbortSignal.timeout(1800),
         });
-
-        if (!res.ok) continue;
-        const text = await res.text();
-        if (!text.startsWith("{")) continue;
-
-        const data = JSON.parse(text);
-        if (Array.isArray(data?.sources) && data.sources.length > 0) {
-          candidateSources = data.sources;
-          activeShard = shard;
-          break;
+        if (r2Res.ok) {
+          const r2Data = await r2Res.json();
+          if (Array.isArray(r2Data?.sources) && r2Data.sources.length > 0) {
+            if (!title || titlesMatch(title, r2Data.title)) {
+              candidateSources = r2Data.sources;
+              break;
+            }
+          }
         }
-      } catch {
-        // Retry next shard
+      } catch { }
+    }
+
+    // Check R2 for alternate type (movie <-> tv) if title matches (e.g. miniseries or TV special)
+    if (candidateSources.length === 0) {
+      const altType = type === "movie" ? "tv" : "movie";
+      const altR2Path = `v5/${altType}/${tmdbNumericId}/${season}_${episode}.json`;
+      for (const r2Cdn of VIDSYNC_R2_CDNS.slice(0, 3)) {
+        try {
+          const r2Res = await fetch(`${r2Cdn}/${altR2Path}`, {
+            signal: AbortSignal.timeout(1500),
+          });
+          if (r2Res.ok) {
+            const r2Data = await r2Res.json();
+            if (Array.isArray(r2Data?.sources) && r2Data.sources.length > 0) {
+              if (title && titlesMatch(title, r2Data.title)) {
+                candidateSources = r2Data.sources;
+                resolvedType = altType;
+                break;
+              }
+            }
+          }
+        } catch { }
       }
     }
 
-    // ── Resilient Type Fallback ──
-    // If 0 sources found under requested type, check alternate type (movie <-> tv)
-    // Supports miniseries, specials, or scrapers where titles are indexed under TV or Movie
-    let resolvedType = type;
+    // ── 2. Fallback: Query VidSync Cloudflare Worker shard cluster if not in R2 ──
+    if (candidateSources.length === 0) {
+      for (const shard of uniqueShards) {
+        const queryParams = new URLSearchParams({
+          type,
+          id: tmdbNumericId,
+          season,
+          episode,
+          _t: String(Date.now()),
+        });
+
+        try {
+          const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
+            headers: {
+              Origin: "https://vidsync.pro",
+              Referer: "https://vidsync.pro/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(1500),
+          });
+
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text.startsWith("{")) continue;
+
+          const data = JSON.parse(text);
+          if (Array.isArray(data?.sources) && data.sources.length > 0) {
+            candidateSources = data.sources;
+            activeShard = shard;
+            break;
+          }
+        } catch {
+          // Retry next shard
+        }
+      }
+    }
+
+    // ── Resilient Type Fallback via Shards ──
     if (candidateSources.length === 0) {
       const altType = type === "movie" ? "tv" : "movie";
       const altKey = `${altType}-${tmdbNumericId}-${season}-${episode}`;
@@ -238,7 +303,7 @@ export async function GET(request: NextRequest) {
               "User-Agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
-            signal: AbortSignal.timeout(4000),
+            signal: AbortSignal.timeout(1500),
           });
           if (!res.ok) continue;
           const text = await res.text();
@@ -258,6 +323,10 @@ export async function GET(request: NextRequest) {
     if (candidateSources.length > 0 && activeShard) {
       candidateSources = candidateSources.map((s: any) => {
         const copy = { ...s };
+        if (copy.rawSignedUrl && (!copy.directUrl || copy.directUrl.includes("workers.dev"))) {
+          copy.directUrl = copy.rawSignedUrl;
+          copy.url = copy.rawSignedUrl;
+        }
         if (typeof copy.fallbackProxyUrl === "string" && copy.fallbackProxyUrl.startsWith("/")) {
           copy.fallbackProxyUrl = `${activeShard}${copy.fallbackProxyUrl}`;
         }
@@ -486,6 +555,17 @@ export async function GET(request: NextRequest) {
           finalPlayable = `${activeShard}${finalPlayable}`;
         }
 
+        // Verify that the candidate stream is actually responsive (skips 429 rate-limited shards or dead domains)
+        const isPlayable = await verifyPlayable(finalPlayable);
+        if (!isPlayable) {
+          // If the primary candidate failed, try raw directUrl before giving up
+          if (source.directUrl && source.directUrl !== finalPlayable && (await verifyPlayable(source.directUrl))) {
+            finalPlayable = source.directUrl;
+          } else {
+            continue;
+          }
+        }
+
         if (aggregatedAudioTracks.length <= 1 && hlsStreams.length > 1) {
           const payload = {
             qualities: hlsStreams,
@@ -532,23 +612,27 @@ export async function GET(request: NextRequest) {
       );
       const fallbackRes = await fetch(fallbackUrl.toString(), {
         headers: { "User-Agent": request.headers.get("user-agent") || "Mozilla/5.0" },
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(2000),
       });
       if (fallbackRes.ok) {
         const fallbackData = await fallbackRes.json();
         if (fallbackData?.ok && fallbackData?.playable) {
-          const resp = {
-            ...fallbackData,
-            label: "Direct CDN (VidSync)",
-            provider: "VidSync",
-          };
-          STREAM_CACHE.set(cacheKey, {
-            data: resp,
-            expiry: Date.now() + 15 * 60 * 1000,
-          });
-          return NextResponse.json(resp, {
-            headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600" },
-          });
+          // Verify fallback stream is actually responding (prevent 502 Bad Gateway)
+          const isAlive = await verifyPlayable(fallbackData.playable);
+          if (isAlive) {
+            const resp = {
+              ...fallbackData,
+              label: "Direct CDN (VidSync)",
+              provider: "VidSync",
+            };
+            STREAM_CACHE.set(cacheKey, {
+              data: resp,
+              expiry: Date.now() + 15 * 60 * 1000,
+            });
+            return NextResponse.json(resp, {
+              headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600" },
+            });
+          }
         }
       }
     } catch { }
