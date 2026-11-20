@@ -128,6 +128,21 @@ const VIDSYNC_WORKER_SHARDS = [
   "https://vidsync-shard.vs-deals80.workers.dev",
 ];
 
+// VidSync primary Cloudflare R2 CDN buckets (0 rate limit data lake)
+const VIDSYNC_R2_CDNS = [
+  "https://r2.vidsync.pro",
+  "https://pub-f88a952ac21143ffb94493f150556669.r2.dev",
+  "https://pub-e9ef31bceae34b4592c33790702a1c9c.r2.dev",
+  "https://pub-21a592d0329f4a6aa26db8c8a7b8110c.r2.dev",
+  "https://pub-167f5a45d5084266a4d027ac45ee4469.r2.dev",
+  "https://pub-b12edb9706224684ac8a82c709a9f7ca.r2.dev",
+  "https://pub-1ff6128748e345e2b87d5c6a7cb86846.r2.dev",
+  "https://pub-fe962ac6c5d1442aa34ab7214b31705d.r2.dev",
+  "https://pub-37718c950637430cb0a7cec535b6fe1e.r2.dev",
+  "https://pub-15393bdb20c94e569ff9e6b643f6665b.r2.dev",
+  "https://pub-9419273a93504a06bc1360c627f7f662.r2.dev",
+];
+
 // FNV-1a hash algorithm matching VidSync client implementation
 function fnv1a(str: string): number {
   let h = 2166136261;
@@ -167,6 +182,14 @@ function normalizeTitle(t: string): string {
     .toLowerCase()
     .replace(/^(the|a|an)\s+/i, "")
     .replace(/[^a-z0-9]/g, "");
+}
+
+function titlesMatch(reqTitle?: string | null, srcTitle?: string | null): boolean {
+  if (!reqTitle || !srcTitle) return true;
+  const a = normalizeTitle(reqTitle);
+  const b = normalizeTitle(srcTitle);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 function extractTitleFromSource(s: VidSyncSource): string | null {
@@ -227,48 +250,92 @@ export async function GET(request: NextRequest) {
     const uniqueShards = [...new Set(targetShards)];
     let candidateSources: VidSyncSource[] = [];
     let activeShard = uniqueShards[0];
+    let resolvedType = type;
 
-    // Query VidSync Cloudflare Worker shard cluster
-    for (const shard of uniqueShards) {
-      const queryParams = new URLSearchParams({
-        type,
-        id: tmdbNumericId,
-        season,
-        episode,
-        _t: String(Date.now()),
-      });
-
+    // ── 1. Primary Direct CDN: VidSync Cloudflare R2 Data Lake (0 rate limit) ──
+    const r2Path = `v5/${type}/${tmdbNumericId}/${season}_${episode}.json`;
+    for (const r2Cdn of VIDSYNC_R2_CDNS) {
       try {
-        const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
-          headers: {
-            Origin: "https://vidsync.pro",
-            Referer: "https://vidsync.pro/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          signal: AbortSignal.timeout(3000),
+        const r2Res = await fetch(`${r2Cdn}/${r2Path}`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        if (r2Res.ok) {
+          const r2Data = await r2Res.json();
+          if (Array.isArray(r2Data?.sources) && r2Data.sources.length > 0) {
+            if (!title || !r2Data.title || titlesMatch(title, r2Data.title)) {
+              candidateSources = r2Data.sources;
+              break;
+            }
+          }
+        }
+      } catch { }
+    }
+
+    // Check R2 for alternate type (movie <-> tv) if title matches (e.g. miniseries or TV special)
+    if (candidateSources.length === 0) {
+      const altType = type === "movie" ? "tv" : "movie";
+      const altR2Path = `v5/${altType}/${tmdbNumericId}/${season}_${episode}.json`;
+      for (const r2Cdn of VIDSYNC_R2_CDNS.slice(0, 3)) {
+        try {
+          const r2Res = await fetch(`${r2Cdn}/${altR2Path}`, {
+            signal: AbortSignal.timeout(1800),
+          });
+          if (r2Res.ok) {
+            const r2Data = await r2Res.json();
+            if (Array.isArray(r2Data?.sources) && r2Data.sources.length > 0) {
+              if (!title || !r2Data.title || titlesMatch(title, r2Data.title)) {
+                candidateSources = r2Data.sources;
+                resolvedType = altType;
+                break;
+              }
+            }
+          }
+        } catch { }
+      }
+    }
+
+    // ── 2. Fallback: Query VidSync Cloudflare Worker shard cluster if not in R2 ──
+    if (candidateSources.length === 0) {
+      for (const shard of uniqueShards) {
+        const queryParams = new URLSearchParams({
+          type,
+          id: tmdbNumericId,
+          season,
+          episode,
+          _t: String(Date.now()),
         });
 
-        if (res.status === 429) continue;
-        if (!res.ok) continue;
-        const text = await res.text();
-        if (!text.startsWith("{")) continue;
+        try {
+          const res = await fetch(`${shard}/api/core/streams?${queryParams.toString()}`, {
+            headers: {
+              Origin: "https://vidsync.pro",
+              Referer: "https://vidsync.pro/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(3000),
+          });
 
-        const data = JSON.parse(text);
-        if (Array.isArray(data?.sources) && data.sources.length > 0) {
-          candidateSources = data.sources;
-          activeShard = shard;
-          break;
+          if (res.status === 429) continue;
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text.startsWith("{")) continue;
+
+          const data = JSON.parse(text);
+          if (Array.isArray(data?.sources) && data.sources.length > 0) {
+            candidateSources = data.sources;
+            activeShard = shard;
+            break;
+          }
+        } catch {
+          // Retry next shard
         }
-      } catch {
-        // Retry next shard
       }
     }
 
     // ── Resilient Type Fallback ──
     // If 0 sources found under requested type, check alternate type (movie <-> tv)
     // Supports miniseries, specials, or scrapers where titles are indexed under TV or Movie
-    let resolvedType = type;
     if (candidateSources.length === 0) {
       const altType = type === "movie" ? "tv" : "movie";
       const altKey = `${altType}-${tmdbNumericId}-${season}-${episode}`;
@@ -552,19 +619,66 @@ export async function GET(request: NextRequest) {
           (q) => q && q.url && q.url.includes(".m3u8") && !q.url.includes("workers.dev")
         );
 
+        // Build per-language multi-rendition HLS streams so changing language preserves quality ladder
+        const finalAudioTracks: Array<{ language: string; label: string; url: string }> = [];
+        for (const a of aggregatedAudioTracks) {
+          const langSources = candidateSources.filter(
+            (s) => (s.audio || s.audioLanguage || "en").toLowerCase() === a.language
+          );
+          const langQualities: Array<{ quality: string; url: string }> = [];
+          const seenLangQ = new Set<string>();
+          for (const s of langSources) {
+            const directCandidate = [s.directUrl, (s as any).rawSignedUrl, s.rawUrl, s.url].find(
+              (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u) && !u.includes("workers.dev")
+            );
+            const sUrl = directCandidate || s.url;
+            if (!sUrl) continue;
+            const qLabel = s.quality || "720p";
+            if (!qLabel.toLowerCase().includes("auto") && !seenLangQ.has(qLabel)) {
+              seenLangQ.add(qLabel);
+              langQualities.push({ quality: qLabel, url: sUrl });
+            }
+            if (sUrl.includes("/720/") || sUrl.includes("/1080/")) {
+              for (const h of [1080, 720, 480]) {
+                const resLabel = `${h}p`;
+                if (!seenLangQ.has(resLabel)) {
+                  seenLangQ.add(resLabel);
+                  const resUrl = sUrl
+                    .replaceAll("%2F720%2F", `%2F${h}%2F`).replaceAll("/720/", `/${h}/`)
+                    .replaceAll("%2F1080%2F", `%2F${h}%2F`).replaceAll("/1080/", `/${h}/`)
+                    .replaceAll("%2F480%2F", `%2F${h}%2F`).replaceAll("/480/", `/${h}/`);
+                  langQualities.push({ quality: resLabel, url: resUrl });
+                }
+              }
+            }
+          }
+
+          let langMasterUrl = a.url;
+          if (langQualities.length > 1) {
+            const payload = { qualities: langQualities };
+            const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
+            langMasterUrl = `/api/hls-master?data=${encodeURIComponent(encoded)}`;
+          }
+
+          finalAudioTracks.push({
+            language: a.language,
+            label: a.label,
+            url: langMasterUrl,
+          });
+        }
+
         // For multi-audio titles, start directly with the English audio rendition (defaultAudio=en)
-        // so that elementary stream 0x101 is English rather than raw Castle Hindi.
         const primaryAudioTrack =
-          aggregatedAudioTracks.find((a) => a.language === "en") || aggregatedAudioTracks[0];
+          finalAudioTracks.find((a) => a.language === "en") || finalAudioTracks[0];
         let finalPlayable = primaryAudioTrack?.url || url;
         if (typeof finalPlayable === "string" && finalPlayable.startsWith("/") && !finalPlayable.startsWith("/api/hls-master")) {
           finalPlayable = `${activeShard}${finalPlayable}`;
         }
 
-        if (hlsStreams.length > 1) {
+        if (hlsStreams.length > 1 && !finalPlayable.startsWith("/api/hls-master")) {
           const payload = {
             qualities: hlsStreams,
-            audios: aggregatedAudioTracks,
+            audios: finalAudioTracks,
           };
           const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
           finalPlayable = `/api/hls-master?data=${encodeURIComponent(encoded)}`;
@@ -578,9 +692,9 @@ export async function GET(request: NextRequest) {
           type: "hls",
           label: "Direct CDN (VidSync)",
           quality: source.quality || "720p",
-          audio: source.audio || source.audioLanguage || "en",
+          audio: primaryAudioTrack?.language || source.audio || source.audioLanguage || "en",
           subtitles: aggregatedSubtitles.length > 0 ? aggregatedSubtitles : (source.subtitles || []),
-          audioTracks: aggregatedAudioTracks,
+          audioTracks: finalAudioTracks,
           qualities: aggregatedQualities,
           secondaryStream: secondaryStreamData,
           availableCount: candidateSources.length,

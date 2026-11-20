@@ -69,30 +69,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Filter to valid audio tracks
-    const validAudios = audios.filter((a) => a && a.url && a.url.startsWith("http"));
-
-    const hasAudios = validAudios.length > 1;
-    if (hasAudios) {
-      const seenAudios = new Set<string>();
-      for (const a of validAudios) {
-        const lang = (a.language || "en").toLowerCase();
-        if (seenAudios.has(lang)) continue;
-        seenAudios.add(lang);
-
-        const label = a.label || lang.toUpperCase();
-        const isDefault = lang === "en" || label.toLowerCase().includes("english");
-
-        // Note: URI attribute is omitted for multiplexed / stream-switch variants per RFC 8216
-        // so mobile iOS Safari / AVPlayer demuxes smoothly without infinite buffering.
-        lines.push(
-          `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${label}",DEFAULT=${isDefault ? "YES" : "NO"},AUTOSELECT=YES,LANGUAGE="${lang}"`
-        );
-      }
-    }
-
-    const audioAttr = hasAudios ? ',AUDIO="audio"' : "";
-
+    // Pure multivariant HLS video playlist (audio is in-stream multiplexed per language stream)
     for (const q of uniqueQualities) {
       const label = q.quality || "720p";
       const height = parseInt(label) || 720;
@@ -114,7 +91,7 @@ export async function GET(req: NextRequest) {
       }
 
       lines.push(
-        `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height}${audioAttr},NAME="${label}"`
+        `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${width}x${height},NAME="${label}"`
       );
       lines.push(q.url);
     }

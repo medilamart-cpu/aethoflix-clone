@@ -166,10 +166,24 @@ function PlayerStateBridge({
         }
       };
       media.engine.on("hlsError", onHlsError);
+
+      const onManifestParsed = (_e: any, data: any) => {
+        if (selectedQualityHeightRef.current > 0 && Array.isArray(data?.levels)) {
+          const targetH = selectedQualityHeightRef.current;
+          const matchIdx = data.levels.findIndex(
+            (l: any) => l.height === targetH || Math.abs((l.height || 0) - targetH) <= 50
+          );
+          if (matchIdx !== -1) {
+            media.engine.currentLevel = matchIdx;
+          }
+        }
+      };
+      media.engine.on("hlsManifestParsed", onManifestParsed);
     }
 
     const populateAudioTracks = () => {
       if (populatingAudioRef.current || !media) return;
+      if (normalizedAudios.length <= 1) return;
 
       const currentTargetId = selectedAudioIdRef.current || "0";
 
@@ -241,6 +255,11 @@ function PlayerStateBridge({
 
     const populateVideoRenditions = () => {
       if (populatingRenditionsRef.current || !media) return;
+
+      // If stream is a master multivariant playlist, allow native HlsJsMediaTracks to provide renditions
+      if (activeSrc && activeSrc.includes("/api/hls-master")) {
+        return;
+      }
 
       const currentTargetHeight = selectedQualityHeightRef.current;
 
@@ -472,11 +491,24 @@ function PlayerStateBridge({
 
     media.audioTracks?.addEventListener?.("change", onTrackChange);
 
+    const onRenditionChange = () => {
+      if (!media.videoRenditions) return;
+      const rends = [...media.videoRenditions];
+      const selected = rends.find((r: any) => r.selected);
+      if (selected && selected.height) {
+        selectedQualityHeightRef.current = selected.height;
+      } else if (media.videoRenditions.selectedIndex === -1) {
+        selectedQualityHeightRef.current = -1;
+      }
+    };
+    media.videoRenditions?.addEventListener?.("change", onRenditionChange);
+
     return () => {
       media.removeEventListener?.("loadstart", onMediaReady);
       media.removeEventListener?.("loadedmetadata", onMediaReady);
       media.removeEventListener?.("canplay", onMediaReady);
       media.audioTracks?.removeEventListener?.("change", onTrackChange);
+      media.videoRenditions?.removeEventListener?.("change", onRenditionChange);
     };
   }, [media, normalizedAudios, availableQualities, onAudioChange, onQualityChange, selectedAudioId]);
 
@@ -658,7 +690,7 @@ export function VideoJSPlayer({
 
     let targetAudioUrl = audioItem.url;
     if (audioItem?.url) {
-      if (userSelectedQualityRef.current > 0) {
+      if (userSelectedQualityRef.current > 0 && !targetAudioUrl.includes("/api/hls-master")) {
         const targetStr = String(userSelectedQualityRef.current);
         const currentResMatch = targetAudioUrl.match(/(?:%2F|\/)(\d{3,4})(?:%2F|\/)/);
         const currentRes = currentResMatch ? currentResMatch[1] : null;
