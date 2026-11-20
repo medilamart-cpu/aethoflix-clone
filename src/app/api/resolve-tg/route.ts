@@ -524,6 +524,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Upstream fallback if VidSync worker cluster is rate-limited (Cloudflare 429 Error 1027)
+    try {
+      const fallbackUrl = new URL(
+        `/api/resolve-theog?type=${type}&id=${tmdbNumericId}&s=${season}&e=${episode}`,
+        request.url
+      );
+      const fallbackRes = await fetch(fallbackUrl.toString(), {
+        headers: { "User-Agent": request.headers.get("user-agent") || "Mozilla/5.0" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (fallbackRes.ok) {
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData?.ok && fallbackData?.playable) {
+          const resp = {
+            ...fallbackData,
+            label: "Direct CDN (VidSync)",
+            provider: "VidSync",
+          };
+          STREAM_CACHE.set(cacheKey, {
+            data: resp,
+            expiry: Date.now() + 15 * 60 * 1000,
+          });
+          return NextResponse.json(resp, {
+            headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600" },
+          });
+        }
+      }
+    } catch { }
+
     return NextResponse.json(
       {
         ok: false,
