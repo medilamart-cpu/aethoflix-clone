@@ -57,6 +57,7 @@ function PlayerStateBridge({
   selectedAudioId = "0",
   onAudioChange,
   onQualityChange,
+  userSelectedQualityRef,
 }: {
   storageKey?: string;
   onFirstFrame?: () => void;
@@ -66,6 +67,7 @@ function PlayerStateBridge({
   selectedAudioId?: string;
   onAudioChange?: (audio: any) => void;
   onQualityChange?: (quality: any) => void;
+  userSelectedQualityRef: React.MutableRefObject<number>;
 }) {
   const store = usePlayer();
   const media = useMedia() as any;
@@ -86,7 +88,7 @@ function PlayerStateBridge({
   const hasAutoSelectedRef = useRef(false);
   const selectedAudioIdRef = useRef(selectedAudioId);
   selectedAudioIdRef.current = selectedAudioId;
-  const selectedQualityHeightRef = useRef<number>(-1);
+  // userSelectedQualityRef is passed from parent — it persists across re-renders of this component
 
   // Normalize audio candidate list with numeric-compatible IDs
   const normalizedAudios = useMemo(() => {
@@ -212,18 +214,20 @@ function PlayerStateBridge({
     const populateVideoRenditions = () => {
       if (populatingRenditionsRef.current || !media) return;
 
-      const currentTargetHeight = selectedQualityHeightRef.current;
+      // Always use the shared ref from the outer component — survives re-renders
+      const currentTargetHeight = userSelectedQualityRef.current > 0 ? userSelectedQualityRef.current : 1080;
 
-      // If media already has custom renditions, update selected state in place
+      // If media already has custom renditions, update selected state in place (don't rebuild)
       if (media.videoRenditions && (media.videoRenditions as any)._isCustom) {
         const rends = [...media.videoRenditions];
-        const matchIdx = currentTargetHeight > 0 ? rends.findIndex((r: any) => r.height === currentTargetHeight) : -1;
-        if (media.videoRenditions.selectedIndex !== matchIdx) {
-          media.videoRenditions.selectedIndex = matchIdx;
+        const matchIdx = rends.findIndex((r: any) => r.height === currentTargetHeight);
+        const effectiveIdx = matchIdx !== -1 ? matchIdx : 0;
+        if (media.videoRenditions.selectedIndex !== effectiveIdx) {
+          media.videoRenditions.selectedIndex = effectiveIdx;
         } else {
           rends.forEach((r: any, i: number) => {
-            r.selected = i === matchIdx;
-            r.active = matchIdx === -1 ? i === 0 : i === matchIdx;
+            r.selected = i === effectiveIdx;
+            r.active = i === effectiveIdx;
           });
           media.videoRenditions.dispatchEvent(new Event("change"));
         }
@@ -243,31 +247,51 @@ function PlayerStateBridge({
           url?: string;
         }> = [];
 
-        // Guarantee distinct standard multi-resolutions with exact 16:9 specs to prevent duplicate badge formatting
-        const targetHeights = [1080, 720, 480];
-        targetHeights.forEach((h) => {
-          const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
-          const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
-          renditions.push({
-            id: `${h}p`,
-            width: w,
-            height: h,
-            bitrate: b,
-            selected: false,
-            active: false,
+        // Check if explicit qualities are provided via props
+        if (Array.isArray(availableQualities) && availableQualities.length > 0 && typeof availableQualities[0] === "object") {
+          availableQualities.forEach((q: any) => {
+            const h = Number(q.height) || Number(q.quality?.replace(/p$/i, "")) || 0;
+            if (!h) return;
+            renditions.push({
+              id: `${h}p`,
+              width: h >= 1080 ? 1920 : h >= 720 ? 1280 : 854,
+              height: h,
+              bitrate: q.bitrate || (h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000),
+              selected: false,
+              active: false,
+              url: q.url,
+            });
           });
-        });
+        }
+
+        // Fallback to standard 1080/720/480 if list is empty
+        if (renditions.length === 0) {
+          const targetHeights = [1080, 720, 480];
+          targetHeights.forEach((h) => {
+            const w = h >= 1080 ? 1920 : h >= 720 ? 1280 : 854;
+            const b = h >= 1080 ? 5000000 : h >= 720 ? 2500000 : 1200000;
+            renditions.push({
+              id: `${h}p`,
+              width: w,
+              height: h,
+              bitrate: b,
+              selected: false,
+              active: false,
+            });
+          });
+        }
 
         // Sort descending: 1080p, 720p, 480p
         renditions.sort((a, b) => b.height - a.height);
 
-        let selectedIdx = currentTargetHeight > 0
-          ? renditions.findIndex(r => r.height === currentTargetHeight)
-          : -1;
+        let selectedIdx = renditions.findIndex(r => r.height === currentTargetHeight);
+        if (selectedIdx === -1 && renditions.length > 0) {
+          selectedIdx = 0; // Default to highest (1080p)
+        }
 
         renditions.forEach((r, i) => {
           r.selected = i === selectedIdx;
-          r.active = selectedIdx === -1 ? i === 0 : i === selectedIdx;
+          r.active = i === selectedIdx;
         });
 
         const customRenditions = Object.assign(renditionListTarget, {
@@ -279,17 +303,50 @@ function PlayerStateBridge({
           set selectedIndex(val: number) {
             selectedIdx = val;
             const chosen = val >= 0 ? renditions[val] : null;
-            selectedQualityHeightRef.current = chosen ? chosen.height : -1;
+            // Write back to the shared outer ref so it survives re-renders
+            userSelectedQualityRef.current = chosen ? chosen.height : 1080;
 
             renditions.forEach((r, i) => {
               r.selected = i === val;
               r.active = val === -1 ? i === 0 : i === val;
             });
 
-            if (media.engine && typeof media.engine.currentLevel !== "undefined") {
+            if (media.engine) {
               try {
-                media.engine.currentLevel = val;
-              } catch {}
+                if (media.engine.config) {
+                  media.engine.config.capLevelToPlayerSize = false;
+                }
+                if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
+                  try { (media as any).capRenditionToPlayerSize = false; } catch {}
+                }
+
+                if (val === -1) {
+                  media.engine.currentLevel = -1;
+                  media.engine.nextLevel = -1;
+                } else if (chosen) {
+                  const targetHeight = chosen.height;
+                  if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
+                    const levelIdx = media.engine.levels.findIndex(
+                      (lvl: any) => lvl.height === targetHeight
+                    );
+                    if (levelIdx !== -1) {
+                      media.engine.currentLevel = levelIdx;
+                      media.engine.nextLevel = levelIdx;
+                      media.engine.loadLevel = levelIdx;
+                    } else {
+                      const isAscending = media.engine.levels.length > 1 &&
+                        media.engine.levels[0].height < media.engine.levels[media.engine.levels.length - 1].height;
+                      const mappedIdx = isAscending ? (media.engine.levels.length - 1 - val) : val;
+                      media.engine.currentLevel = mappedIdx;
+                      media.engine.nextLevel = mappedIdx;
+                    }
+                  } else if (typeof media.engine.currentLevel !== "undefined") {
+                    media.engine.currentLevel = val;
+                  }
+                }
+              } catch (err) {
+                console.warn("[VideoJS] Error setting engine quality level:", err);
+              }
             }
 
             if (chosen) {
@@ -321,6 +378,26 @@ function PlayerStateBridge({
           configurable: true,
         });
 
+        // Apply initial engine quality level if engine already has levels
+        if (media.engine && selectedIdx >= 0) {
+          try {
+            if (media.engine.config) {
+              media.engine.config.capLevelToPlayerSize = false;
+            }
+            if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
+              try { (media as any).capRenditionToPlayerSize = false; } catch {}
+            }
+            const targetHeight = renditions[selectedIdx]?.height || 1080;
+            if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
+              const levelIdx = media.engine.levels.findIndex((lvl: any) => lvl.height === targetHeight);
+              if (levelIdx !== -1) {
+                media.engine.currentLevel = levelIdx;
+                media.engine.nextLevel = levelIdx;
+              }
+            }
+          } catch {}
+        }
+
         customRenditions.dispatchEvent(new Event("change"));
       } catch (err) {
         console.warn("[VideoJS] Error populating video renditions:", err);
@@ -336,6 +413,25 @@ function PlayerStateBridge({
     const onMediaReady = () => {
       populateAudioTracks();
       populateVideoRenditions();
+
+      if (media?.engine) {
+        try {
+          if (media.engine.config) {
+            media.engine.config.capLevelToPlayerSize = false;
+          }
+          if (typeof (media as any).capRenditionToPlayerSize !== "undefined") {
+            try { (media as any).capRenditionToPlayerSize = false; } catch {}
+          }
+          if (Array.isArray(media.engine.levels) && media.engine.levels.length > 0) {
+            const targetH = userSelectedQualityRef.current > 0 ? userSelectedQualityRef.current : 1080;
+            const levelIdx = media.engine.levels.findIndex((lvl: any) => lvl.height === targetH);
+            if (levelIdx !== -1 && media.engine.currentLevel !== levelIdx) {
+              media.engine.currentLevel = levelIdx;
+              media.engine.nextLevel = levelIdx;
+            }
+          }
+        } catch {}
+      }
     };
 
     media.addEventListener?.("loadstart", onMediaReady);
@@ -557,7 +653,7 @@ export function VideoJSPlayer({
 
   const [selectedAudioId, setSelectedAudioId] = useState<string>(initialAudioId);
   const [activeSrc, setActiveSrc] = useState(src);
-  const userSelectedQualityRef = useRef<number>(-1);
+  const userSelectedQualityRef = useRef<number>(1080);
 
   useEffect(() => {
     if (userSelectedQualityRef.current <= 0) {
@@ -690,6 +786,7 @@ export function VideoJSPlayer({
           selectedAudioId={selectedAudioId}
           onAudioChange={handleAudioSelect}
           onQualityChange={handleQualitySelect}
+          userSelectedQualityRef={userSelectedQualityRef}
         />
         <VideoSkin
           style={
